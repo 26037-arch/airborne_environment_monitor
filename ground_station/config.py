@@ -1,0 +1,11 @@
+from pathlib import Path
+
+# 일반 사용자는 주로 이 파일만 수정하면 됩니다.
+BAUD_RATE = 115200
+DATA_DIRECTORY = Path(__file__).resolve().parent / "data"
+GRAPH_POINT_COUNT = 120
+RECONNECT_INTERVAL_SECONDS = 3.0
+SERIAL_READ_TIMEOUT_SECONDS = 1.2
+AUTO_DETECT_SECONDS_PER_PORT = 2.5
+MOCK_INTERVAL_SECONDS = 1.0
+

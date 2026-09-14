@@ -1,0 +1,4 @@
+ground_station/data/*.csv
+ground_station/__pycache__/
+ground_station/tests/__pycache__/
+ground_station/tests/_runtime/
