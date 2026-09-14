@@ -1,4 +1,8 @@
 ground_station/data/*.csv
-ground_station/__pycache__/
-ground_station/tests/__pycache__/
+__pycache__/
+*.py[cod]
 ground_station/tests/_runtime/
+simulator/runs/*
+!simulator/runs/.gitkeep
+simulator/tests/_runtime/
+simulator/active_config.json

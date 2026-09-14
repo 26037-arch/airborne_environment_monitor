@@ -61,6 +61,9 @@ def run_headless(receiver, events: queue.Queue[ReceiverEvent], logger: DataLogge
                     print(f"WARNING: {missing} packet(s) missing", file=sys.stderr)
             elif event.kind in {"state", "port", "error", "invalid"}:
                 print(f"[{event.kind}] {event.value}", file=sys.stderr)
+                if (event.kind == "state" and str(event.value).endswith("DISCONNECTED")
+                        and getattr(receiver, "stop_at_eof", False)):
+                    break
     except KeyboardInterrupt:
         pass
     finally:
@@ -70,11 +73,16 @@ def run_headless(receiver, events: queue.Queue[ReceiverEvent], logger: DataLogge
 def main() -> int:
     parser = argparse.ArgumentParser(description="공중 환경 측정 PC 지상국")
     parser.add_argument("--mock", action="store_true", help="하드웨어 없이 가상 데이터 사용")
+    parser.add_argument("--simulation", action="store_true", help="Webots UDP bridge 수신")
+    parser.add_argument("--replay", help="기록된 Arduino-compatible CSV 재생")
     parser.add_argument("--port", help="자동 탐색 대신 사용할 COM 포트 (예: COM5)")
     parser.add_argument("--headless", action="store_true", help="GUI 없이 수신/저장")
     parser.add_argument("--duration", type=float, help="headless 실행 시간(초)")
     parser.add_argument("--list-ports", action="store_true", help="COM 포트 목록만 출력")
     args = parser.parse_args()
+
+    if sum(bool(value) for value in (args.mock, args.simulation, args.replay)) > 1:
+        parser.error("--mock, --simulation, --replay 중 하나만 선택하세요")
 
     if args.list_ports:
         print("\n".join(available_ports()) or "사용 가능한 COM 포트 없음")
@@ -87,7 +95,18 @@ def main() -> int:
     logger = DataLogger(config.DATA_DIRECTORY)
     print(f"PC CSV 저장 파일: {logger.path}")
 
-    if args.mock:
+    if args.simulation or args.replay:
+        from pathlib import Path
+        from shared.telemetry_sources import CSVReplaySource, SimulationSource
+        from source_receiver import SourceReceiver
+
+        if args.simulation:
+            receiver = SourceReceiver(events, SimulationSource(), "WEBOTS UDP")
+        else:
+            receiver = SourceReceiver(
+                events, CSVReplaySource(Path(args.replay)), f"REPLAY: {args.replay}", True
+            )
+    elif args.mock:
         receiver = MockReceiver(events)
     else:
         receiver = SerialReceiver(events, args.port or choose_port())
@@ -116,4 +135,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

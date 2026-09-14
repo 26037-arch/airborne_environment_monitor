@@ -15,8 +15,9 @@ except ModuleNotFoundError:  # mock mode는 pyserial 없이도 동작할 수 있
     list_ports = None
 
 import config
-from data_model import InvalidRow, Measurement, parse_csv_line
+from data_model import InvalidRow
 from mock_data import MockDataGenerator
+from shared.telemetry_sources import SerialSource
 
 
 class ConnectionState(str, Enum):
@@ -48,18 +49,17 @@ def probe_port(port: str, seconds: float | None = None) -> bool:
         )
     deadline = time.monotonic() + (seconds or config.AUTO_DETECT_SECONDS_PER_PORT)
     try:
-        with serial.Serial(
-            port, config.BAUD_RATE, timeout=config.SERIAL_READ_TIMEOUT_SECONDS
-        ) as device:
+        source = SerialSource(port, config.BAUD_RATE, config.SERIAL_READ_TIMEOUT_SECONDS)
+        try:
             while time.monotonic() < deadline:
-                raw = device.readline()
-                if not raw:
-                    continue
                 try:
-                    parse_csv_line(raw.decode("ascii", errors="strict"))
-                    return True
+                    measurement = source.read()
                 except (UnicodeDecodeError, InvalidRow):
                     continue
+                if measurement is not None:
+                    return True
+        finally:
+            source.close()
     except (OSError, serial.SerialException):
         return False
     return False
@@ -104,7 +104,7 @@ class SerialReceiver:
             return [self.preferred_port] + [p for p in ports if p != self.preferred_port]
         return ports
 
-    def _open_port(self) -> tuple[serial.Serial, str] | None:
+    def _open_port(self) -> tuple[SerialSource, str] | None:
         for port in self._candidate_ports():
             if self._stop.is_set():
                 return None
@@ -113,13 +113,10 @@ class SerialReceiver:
             if port != self.preferred_port and not probe_port(port):
                 continue
             try:
-                device = serial.Serial(
-                    port,
-                    config.BAUD_RATE,
-                    timeout=config.SERIAL_READ_TIMEOUT_SECONDS,
-                )
+                source = SerialSource(port, config.BAUD_RATE,
+                                      config.SERIAL_READ_TIMEOUT_SECONDS)
                 self.preferred_port = port
-                return device, port
+                return source, port
             except (OSError, serial.SerialException) as exc:
                 self.events.put(ReceiverEvent("error", f"{port}: {exc}"))
         return None
@@ -133,26 +130,24 @@ class SerialReceiver:
                 self._stop.wait(config.RECONNECT_INTERVAL_SECONDS)
                 continue
 
-            device, port = opened
+            source, port = opened
             self.events.put(ReceiverEvent("port", port))
             self._state(ConnectionState.CONNECTED)
             try:
                 while not self._stop.is_set():
-                    raw = device.readline()
-                    if not raw:
-                        continue
                     try:
-                        line = raw.decode("ascii", errors="strict")
-                        measurement = parse_csv_line(line)
+                        measurement = source.read()
                     except (UnicodeDecodeError, InvalidRow) as exc:
                         self.events.put(ReceiverEvent("invalid", str(exc)))
+                        continue
+                    if measurement is None:
                         continue
                     self.events.put(ReceiverEvent("measurement", measurement))
             except (OSError, serial.SerialException) as exc:
                 self.events.put(ReceiverEvent("error", f"연결 끊김: {exc}"))
             finally:
                 try:
-                    device.close()
+                    source.close()
                 except serial.SerialException:
                     pass
                 self._state(ConnectionState.DISCONNECTED)

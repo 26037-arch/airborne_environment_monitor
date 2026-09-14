@@ -1,0 +1,51 @@
+{
+  "latitude": 37.5,
+  "longitude": 127.0,
+  "month": 9,
+  "atmosphere_mode": "EARTH CLIMATOLOGY",
+  "initial_altitude_m": 1000.0,
+  "initial_velocity_east_mps": 0.0,
+  "initial_velocity_north_mps": 0.0,
+  "initial_velocity_vertical_mps": -5.0,
+  "payload_mass_kg": 1.0,
+  "drag_coefficient": 0.8,
+  "reference_area_m2": 0.03,
+  "telemetry_interval_s": 1.0,
+  "random_seed": 12345,
+  "noise": {
+    "mode": "IDEAL",
+    "enabled": false,
+    "strength": 1.0,
+    "random_seed": 12345
+  },
+  "wind": {
+    "mode": "CALM",
+    "speed_mps": 0.0,
+    "direction_to_deg": 0.0,
+    "vertical_mps": 0.0,
+    "layers": [],
+    "mean_speed_mps": 0.0,
+    "mean_direction_to_deg": 0.0,
+    "gust_amplitude_mps": 0.0,
+    "gust_frequency_hz": 0.1,
+    "turbulence_std_mps": 0.0,
+    "random_seed": 12345,
+    "physics_rate_hz": 50.0
+  },
+  "failures": {
+    "bme280_failure": false,
+    "sps30_failure": false,
+    "gps_dropout": false,
+    "sd_failure": false
+  },
+  "radio": {
+    "failure_test_enabled": false,
+    "packet_loss_probability": 0.0,
+    "latency_ms": 0.0,
+    "jitter_ms": 0.0,
+    "maximum_range_m": null,
+    "random_seed": 12345
+  },
+  "custom_environment": {}
+}
+

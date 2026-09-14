@@ -4,6 +4,8 @@ BME280, SPS30, GNSS 측정값을 Arduino Mega 2560에서 같은 CSV 행으로 �
 
 처음 검토할 때는 [architecture.md](docs/architecture.md), 배선할 때는 [wiring.md](docs/wiring.md), 문제가 생기면 [troubleshooting.md](docs/troubleshooting.md)를 보세요.
 
+Webots에서 초기 고도부터 하강·이동하며 같은 telemetry를 생성하려면 [simulator/README.md](simulator/README.md)를 보세요. 시뮬레이터, 실제 Arduino, 기록 CSV는 `shared/`의 동일한 18열 schema/parser를 사용하므로 지상국을 다시 작성할 필요가 없습니다.
+
 ## 가장 빠른 시작: 하드웨어 없이 확인
 
 Windows에서 Python 3.11을 설치한 뒤 PowerShell 또는 명령 프롬프트를 엽니다.
@@ -188,6 +190,20 @@ airborne_environment_monitor/
 │  ├─ requirements.txt
 │  ├─ run_ground_station.bat
 │  ├─ run_mock.bat
+│  ├─ data/
+│  └─ tests/
+├─ shared/
+│  ├─ telemetry_schema.py
+│  ├─ telemetry_sources.py
+│  └─ data_types.py
+├─ simulator/
+│  ├─ README.md
+│  ├─ environment/
+│  ├─ sensors/
+│  ├─ telemetry/
+│  ├─ gui/
+│  ├─ webots/
+│  ├─ tools/
 │  ├─ data/
 │  └─ tests/
 └─ examples/example_flight.csv

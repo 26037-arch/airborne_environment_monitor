@@ -1,0 +1,122 @@
+#VRML_SIM R2025a utf8
+
+WorldInfo {
+  info [
+    "Airborne environment measurement simulator"
+    "Starts at altitude; no propulsion or launch model"
+  ]
+  basicTimeStep 20
+  coordinateSystem "ENU"
+  gravity 9.80665
+}
+Viewpoint {
+  orientation 0.2309 -0.9104 -0.3432 1.298
+  position 38 -55 28
+  follow "PAYLOAD"
+  followType "Mounted Shot"
+}
+Background {
+  skyColor [ 0.38 0.62 0.88 ]
+}
+DirectionalLight {
+  direction -0.3 -0.4 -1
+  intensity 1.2
+}
+Solid {
+  translation 0 0 -0.1
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.20 0.34 0.18
+        roughness 1
+        metalness 0
+      }
+      geometry Box { size 4000 4000 0.2 }
+    }
+  ]
+  name "ground"
+  boundingObject Box { size 4000 4000 0.2 }
+}
+Shape {
+  appearance PBRAppearance {
+    baseColor 1 0.35 0.05
+    emissiveColor 0.4 0.05 0
+    roughness 0.5
+  }
+  geometry DEF TRAJECTORY_LINE IndexedLineSet {
+    coord DEF TRAJECTORY_COORD Coordinate { point [ ] }
+    coordIndex [ ]
+  }
+}
+DEF WIND_ARROW Transform {
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0 1 1 emissiveColor 0 0.35 0.35 roughness 0.5 }
+      geometry Cylinder { height 1 radius 0.045 }
+    }
+  ]
+}
+DEF GROUND_VELOCITY_ARROW Transform {
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 1 0.9 0 emissiveColor 0.35 0.3 0 roughness 0.5 }
+      geometry Cylinder { height 1 radius 0.035 }
+    }
+  ]
+}
+DEF RELATIVE_AIR_ARROW Transform {
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 1 0 1 emissiveColor 0.35 0 0.35 roughness 0.5 }
+      geometry Cylinder { height 1 radius 0.03 }
+    }
+  ]
+}
+DEF PAYLOAD Robot {
+  translation 0 0 1000
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.05 0.25 0.85
+        metalness 0.3
+        roughness 0.35
+      }
+      geometry Sphere { radius 0.25 }
+    }
+    GPS { name "gps" }
+    Accelerometer { name "accelerometer" }
+    InertialUnit { name "inertial unit" }
+    Emitter {
+      name "xbee emitter"
+      channel 7
+      range -1
+      baudRate 115200
+    }
+  ]
+  name "PAYLOAD"
+  model "environment payload"
+  boundingObject Sphere { radius 0.25 }
+  physics Physics {
+    density -1
+    mass 1
+    damping Damping { linear 0 angular 0.02 }
+  }
+  controller "payload_controller"
+  supervisor TRUE
+}
+Robot {
+  translation 0 0 0.4
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.85 0.1 0.1 roughness 0.8 }
+      geometry Box { size 0.6 0.6 0.8 }
+    }
+    Receiver {
+      name "ground receiver"
+      channel 7
+      baudRate 115200
+    }
+  ]
+  name "GROUND_BRIDGE"
+  controller "ground_bridge"
+}

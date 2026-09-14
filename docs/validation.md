@@ -63,3 +63,24 @@ mock row parse/change
 - PC mock과 Arduino compile-time mock 제공
 
 실물 센서의 전기적 호환성, GNSS NMEA baud/fix, XBee RF 설정, SD 카드 품질은 실제 하드웨어에서 최종 통합 시험이 필요합니다.
+
+## Webots simulator 검증
+
+2026-09-15에 기존 지상국 9개 회귀 test와 simulator 18개 unit/integration test를 실행해 모두 통과했습니다. 검증 범위는 다음과 같습니다.
+
+- COESA 1976의 geometric altitude 0/1/5/10/20/32 km 기준 온도·압력·밀도; 허용 오차 0.05 K, 0.2%
+- ERA5 고도 보간, RH 범위, 증가하는 고도, 감소하는 압력, 범위 밖 무외삽
+- CAMS `kg/m³ × 1e9 = µg/m³`, 음수 거부, NaN 처리, surface 고도 무외삽
+- gust/random의 같은 seed·같은 step 완전 재현
+- Arduino와 동일한 18개 header/순서와 공용 parser
+- CSV replay source의 같은 parser 사용
+- 기본 radio failure bypass, loss와 latency
+- Scenario A: standard atmosphere + calm + ideal
+- Scenario B: 명시적으로 synthetic이라 표기한 loader fixture + constant wind + datasheet sensor
+- Scenario C: seed 12345의 gust 반복 일치
+- Scenario D: 10% radio loss 설정 + GPS dropout 행을 기존 parser가 정상 처리
+- Scenario E: CAMS 미설치 시 PM `NA`, COESA fallback 지속
+- truth/telemetry/provenance/error report 파일 생성
+- Webots world의 ENU, 20 ms(50 Hz), 중력, payload, radio, trajectory, 세 vector asset 정적 검사
+
+테스트 fixture는 데이터 loader의 구조와 계산만 검증하며 실제 지구 자료가 아닙니다. 현재 검증 PC에는 Webots, PySide6, Matplotlib, xarray가 설치되지 않아 Webots GUI/물리 engine과 원본 NetCDF 전처리의 종단 실행은 수행하지 못했습니다. 실제 ERA5/CAMS Scenario B 지역 비교 역시 공식 파일을 준비한 환경에서 수행해야 합니다. 이 항목을 성공으로 가장하지 않습니다.

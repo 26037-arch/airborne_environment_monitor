@@ -1,0 +1,18 @@
+#VRML_SIM R2025a utf8
+PROTO AirbornePayload [
+  field SFVec3f translation 0 0 1000
+  field SFFloat mass 1
+] {
+  Robot {
+    translation IS translation
+    children [
+      Shape {
+        appearance PBRAppearance { baseColor 0.05 0.25 0.85 }
+        geometry Sphere { radius 0.25 }
+      }
+    ]
+    boundingObject Sphere { radius 0.25 }
+    physics Physics { density -1 mass IS mass }
+  }
+}
+

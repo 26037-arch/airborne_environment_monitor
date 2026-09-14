@@ -17,6 +17,24 @@
 
 PC는 GUI thread와 수신 thread를 `queue.Queue`로 분리합니다. 수신 thread는 serial I/O와 재연결만 맡고, GUI thread가 검증된 measurement를 logger, packet tracker, 화면과 그래프에 보냅니다. MockReceiver도 SerialReceiver와 같은 event를 만들므로 GUI와 logger 코드는 공유됩니다.
 
+Webots 확장에서는 `EarthEnvironment`만 ERA5/CAMS/표준대기를 읽습니다. Webots physics, 센서, GUI는 이 facade가 반환한 `EnvironmentSample`만 사용합니다. `SimulationSource`, `SerialSource`, `CSVReplaySource`는 모두 공용 `TelemetrySource` 인터페이스와 `shared.telemetry_schema` parser로 수렴합니다.
+
+```text
+offline ERA5/CAMS profile ─┐
+COESA 1976 ────────────────┼─→ EarthEnvironment → Webots physics → true state
+explicit user override ────┘                              │
+                                                         ▼
+                                                sensor simulation
+                                                         │
+                            ┌────────────────────────────┴──────────┐
+                            ▼                                       ▼
+                        truth.csv                     Arduino 18-column telemetry
+                                                                    │
+                           Webots Emitter → Receiver → SimulationSource
+                                                                    │
+                                                   existing Ground Station
+```
+
 ## 2. Arduino와 PC 간 data flow
 
 ```text
@@ -76,4 +94,3 @@ SD와 XBee용 데이터를 따로 계산하지 않습니다. `formatCsvRow()`가
 ## 6. 파일 구조
 
 최종 구조는 README의 파일 안내와 같습니다. 요구된 이름을 유지하면서 공통 측정 구조체 `measurement.h`, 엄격한 PC parser/sequence tracker `data_model.py`, mock 생성기 `mock_data.py`, 설계 기록인 이 파일을 추가했습니다.
-
