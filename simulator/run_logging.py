@@ -87,13 +87,16 @@ def create_error_report(run_directory: Path) -> dict[str, object]:
         "pm25_ugm3": "true_pm25_ugm3",
         "pm10_ugm3": "true_pm10_ugm3",
         "gps_altitude_m": "true_altitude_m",
+        "barometric_altitude_m": "true_altitude_m",
     }
     report: dict[str, object] = {"sample_count": len(telemetry), "metrics": {}}
     for sensor_name, truth_name in mapping.items():
         errors: list[float] = []
         for row in telemetry:
             reference = truth.get(int(row["time_ms"]))
-            if reference is None or row[sensor_name] in {"NA", ""} or reference[truth_name] in {"NA", ""}:
+            if (reference is None or sensor_name not in row or
+                    row[sensor_name] in {"NA", ""} or
+                    reference[truth_name] in {"NA", ""}):
                 continue
             errors.append(float(row[sensor_name]) - float(reference[truth_name]))
         count = len(errors)

@@ -7,7 +7,9 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from .telemetry_schema import CSV_HEADER_V1, CSV_HEADER_V2, Measurement, parse_csv_line
+from .telemetry_schema import (
+    CSV_HEADER_V1, CSV_HEADER_V2, CSV_HEADER_V3, Measurement, parse_csv_line,
+)
 
 
 class TelemetrySource(ABC):
@@ -61,7 +63,7 @@ class CSVReplaySource(TelemetrySource):
         self.file = Path(path).open(encoding="utf-8", newline="")
         self.reader = csv.DictReader(self.file)
         self.header = tuple(self.reader.fieldnames or ())
-        if self.header not in {CSV_HEADER_V1, CSV_HEADER_V2}:
+        if self.header not in {CSV_HEADER_V1, CSV_HEADER_V2, CSV_HEADER_V3}:
             self.file.close()
             raise ValueError("CSV replay header가 telemetry schema v1/v2와 다릅니다")
         self.realtime = realtime

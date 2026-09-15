@@ -11,6 +11,9 @@
   "drag_coefficient": 0.8,
   "reference_area_m2": 0.03,
   "telemetry_interval_s": 1.0,
+  "telemetry_schema_version": 3,
+  "sea_level_pressure_hpa": 1013.25,
+  "simulation_epoch_unix": 1767225600,
   "random_seed": 12345,
   "noise": {
     "mode": "IDEAL",
@@ -36,7 +39,11 @@
     "bme280_failure": false,
     "sps30_failure": false,
     "gps_dropout": false,
-    "sd_failure": false
+    "sd_failure": false,
+    "aht20_failure": false,
+    "bmp280_failure": false,
+    "mpu6050_failure": false,
+    "rtc_failure": false
   },
   "radio": {
     "failure_test_enabled": false,
@@ -47,7 +54,7 @@
     "random_seed": 12345
   },
   "flight_controller": {
-    "mode": "MOCK",
+    "mode": "OFF",
     "endpoint": "udp:127.0.0.1:14550",
     "baud_rate": 115200,
     "timeout_ms": 3000

@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 기존 import 경로를 유지하는 compatibility facade입니다.
 from shared.telemetry_schema import (
-    CSV_HEADER, CSV_HEADER_V1, CSV_HEADER_V2, InvalidRow, Measurement,
+    CSV_HEADER, CSV_HEADER_V1, CSV_HEADER_V2, CSV_HEADER_V3, InvalidRow, Measurement,
     parse_csv_line,
 )
 

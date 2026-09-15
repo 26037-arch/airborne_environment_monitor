@@ -8,14 +8,11 @@ struct Measurement {
 
   float temperatureC;
   float humidityPct;
-  float pressureHpa;
-  bool bmeValuesValid;
+  bool ahtValuesValid;
 
-  float pm1Ugm3;
-  float pm25Ugm3;
-  float pm4Ugm3;
-  float pm10Ugm3;
-  bool spsValuesValid;
+  float pressureHpa;
+  float barometricAltitudeM;
+  bool bmpValuesValid;
 
   double latitude;
   double longitude;
@@ -24,11 +21,22 @@ struct Measurement {
   float gpsCourseDeg;
   bool gpsValuesValid;
 
-  bool bmeOk;
-  bool spsOk;
+  float accelXMps2;
+  float accelYMps2;
+  float accelZMps2;
+  float gyroXDps;
+  float gyroYDps;
+  float gyroZDps;
+  bool imuValuesValid;
+
+  uint32_t rtcUnixTime;
+  bool rtcValueValid;
+
+  bool envOk;
+  bool imuOk;
   bool gpsOk;
+  bool rtcOk;
   bool sdOk;
 };
 
 void clearMeasurement(Measurement& measurement, uint32_t seq, uint32_t nowMs);
-

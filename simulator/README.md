@@ -1,6 +1,6 @@
 # Webots 공중 환경 계측 시뮬레이터
 
-이 모듈은 추진·발사를 모델링하지 않습니다. payload는 사용자가 지정한 고도와 속도에서 시작하고, Webots가 중력과 강체 운동을 계산합니다. 환경 엔진이 항력을 위한 공기 밀도와 바람을 제공하고, 센서 모델은 기존 18열 v1 또는 Flight Controller state가 붙은 29열 v2 telemetry를 만듭니다.
+이 모듈은 추진·발사를 모델링하지 않습니다. payload는 사용자가 지정한 고도와 속도에서 시작하고, Webots가 중력과 강체 운동을 계산합니다. 환경 엔진은 그대로 유지되며 기본 sensor pipeline은 실제 payload에 맞춘 AHT20/BMP280/MPU6050/NEO-M8N/RTC schema v3를 만듭니다. `telemetry_schema_version`을 1 또는 2로 설정한 legacy mode도 보존됩니다.
 
 ## 데이터 의미
 
@@ -25,7 +25,7 @@ python -m pip install -r simulator/requirements.txt
 python simulator/main.py
 ```
 
-Control GUI의 `Flight source`는 `OFF`(v1), `MOCK`(adapter pipeline 시험용 v2), `MAVLINK`(PX4/ArduPilot state 수신) 중 선택합니다. MAVLink endpoint의 기본값은 `udp:127.0.0.1:14550`입니다. Mock은 flight-control algorithm이 아니라 환경/telemetry composition을 hardware 없이 검증하기 위한 source입니다.
+기본 `Flight source`는 `OFF`이고 v3 runtime에서 사용하지 않습니다. 기존 adapter를 시험할 때만 `telemetry_schema_version=2`와 `MOCK` 또는 `MAVLINK`를 명시적으로 선택합니다. MAVLink endpoint의 기본값은 `udp:127.0.0.1:14550`입니다.
 
 Control GUI에서 값을 정하고 **Start Webots**를 누릅니다. Webots 3D 창에는 payload, 주황색 이동 궤적, true wind(청록), ground velocity(노랑), relative-air velocity(자홍) 벡터가 표시됩니다. 별도 terminal에서 기존 지상국을 그대로 실행합니다.
 
@@ -34,7 +34,7 @@ cd ground_station
 python main.py --simulation
 ```
 
-시뮬레이션이 보내는 UDP는 Webots `Emitter → Receiver`를 통과한 뒤 localhost `127.0.0.1:19000`으로 연결됩니다. 실제 Arduino는 `python main.py`, 기록 재생은 `python main.py --replay path\telemetry.csv`입니다. 세 입력은 모두 `shared/telemetry_schema.py`의 v1/v2 parser를 사용합니다.
+시뮬레이션이 보내는 UDP는 Webots `Emitter → Receiver`를 통과한 뒤 localhost `127.0.0.1:19000`으로 연결됩니다. 실제 Arduino는 `python main.py`, 기록 재생은 `python main.py --replay path\telemetry.csv`입니다. 세 입력은 모두 `shared/telemetry_schema.py`의 v1/v2/v3 parser를 사용합니다.
 
 ## 데이터 모드
 
@@ -42,7 +42,7 @@ python main.py --simulation
 - `STANDARD ATMOSPHERE`: 온도·압력·밀도만 COESA 1976으로 계산합니다. 습도와 PM은 `NA`이고 CAMS를 조회하지 않습니다.
 - `CUSTOM SYNTHETIC TEST`: UI의 사용자 입력만 사용하며 provenance에 `SYNTHETIC TEST DATA`를 기록합니다.
 
-PM1과 PM4는 현재 선택한 CAMS EAC4 제품이 직접 제공하지 않으므로 추정하지 않습니다. Arduino 열은 유지하지만 값은 `NA`, `sps_ok=0`입니다. CAMS surface scalar는 그 고도 ±1 m에서만 유효하며 공중으로 임의 외삽하지 않습니다. 원본 `kg/m³`는 runtime에서 `× 1e9`하여 `µg/m³`로 변환합니다.
+PM은 environment truth와 legacy v1/v2 simulator에만 남습니다. 보유 hardware에 PM sensor가 없으므로 v3 telemetry에는 PM 열이 없습니다. CAMS surface scalar는 그 고도 ±1 m에서만 유효하며 공중으로 임의 외삽하지 않습니다. 원본 `kg/m³`는 runtime에서 `× 1e9`하여 `µg/m³`로 변환합니다.
 
 ## 공식 원본을 오프라인 profile로 준비하기
 
@@ -87,10 +87,10 @@ ERA5 pressure-level horizontal `u/v`를 사용하지만 직접적인 vertical m/
 ## 센서 모델
 
 - `IDEAL`: 가능한 true 값과 동일합니다. 원천 데이터가 없는 값은 여전히 `NA`입니다.
-- `DATASHEET`: BME280, SPS30, u-blox NEO-M8 사양의 accuracy/precision 한계를 Gaussian의 ±3σ로 해석합니다. 이는 명시적 통계 가정이며 교정 성적서를 대신하지 않습니다.
+- `DATASHEET`: AHT20, BMP280, MPU6050, u-blox NEO-M8(또는 legacy BME280/SPS30) accuracy를 명시적 noise assumption으로 적용합니다. 이는 교정 성적서를 대신하지 않습니다.
 - `CUSTOM`: 현재 공통 noise strength로 preset 크기를 배율 조정합니다.
 
-BME280는 온도 ±0.5 °C, 습도 ±3 %RH, 압력 ±1 hPa를 ±3σ로 사용합니다. SPS30은 PM1/2.5에서 `±(5 µg/m³ + 5% reading)`(≤100), `±10%`(>100), PM4/10에서 `±25 µg/m³`(≤100), `±25%`(>100)를 사용합니다. GNSS preset은 NEO-M8 계열의 대표 horizontal 2.5 m, altitude 4 m, speed 0.05 m/s 값을 ±3σ로 해석합니다. 실제 모듈 설정·안테나·환경에 따라 성능이 달라집니다.
+V3에서 AHT20은 temperature/humidity truth, BMP280은 pressure truth와 configured sea-level pressure 기반 고도, MPU6050은 Webots의 선형 가속도·각속도 state, RTC는 명시적 simulation epoch를 사용합니다. 물리 state가 없는 경우 IMU를 임의 생성하지 않고 `NA`로 둡니다. Legacy v1/v2의 BME280/SPS30 모델도 compatibility mode에 남아 있습니다. GNSS preset은 NEO-M8 계열의 대표 horizontal 2.5 m, altitude 4 m, speed 0.05 m/s 값을 ±3σ로 해석합니다. 실제 모듈 설정·안테나·환경에 따라 성능이 달라집니다.
 
 ## 출력과 장애 시험
 
@@ -104,7 +104,7 @@ BME280는 온도 ±0.5 °C, 습도 ±3 %RH, 압력 ±1 hPa를 ±3σ로 사용합
 
 MAVLink adapter는 physics loop에서 blocking하지 않도록 bounded non-blocking poll을 사용합니다. 이 저장소는 SITL state를 읽지만 arm/mode/motor command를 보내지 않습니다. HIL sensor injection과 virtual actuator→vehicle dynamics의 완전한 closed loop는 설치한 PX4/ArduPilot 및 공식 Webots vehicle integration에서 검증해야 하며, 현재 검증 완료로 표시하지 않습니다.
 
-Radio failure test가 꺼져 있으면 loss/latency/range 설정은 무시되어 무손실·무지연입니다. 켜면 loss, latency, jitter, range를 적용합니다. GPS/BME/SPS/SD failure는 환경 true value를 바꾸지 않고 telemetry의 해당 값/flag만 바꿉니다.
+Radio failure test가 꺼져 있으면 loss/latency/range 설정은 무시되어 무손실·무지연입니다. 켜면 loss, latency, jitter, range를 적용합니다. AHT/BMP/MPU/GPS/RTC/SD failure는 환경 true value를 바꾸지 않고 telemetry의 해당 값/flag만 바꿉니다.
 
 ## 검증
 

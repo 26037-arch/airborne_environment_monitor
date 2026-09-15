@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data_logger import DataLogger
-from data_model import CSV_HEADER, CSV_HEADER_V2
+from data_model import CSV_HEADER, CSV_HEADER_V2, CSV_HEADER_V3
 from shared.telemetry_schema import encode_csv_row, parse_csv_line
 from mock_data import MockDataGenerator
 
@@ -36,9 +36,9 @@ class DataLoggerTests(unittest.TestCase):
 
         with path.open(encoding="utf-8", newline="") as file:
             rows = list(csv.reader(file))
-        self.assertEqual(tuple(rows[0]), CSV_HEADER)
+        self.assertEqual(tuple(rows[0]), CSV_HEADER_V3)
         self.assertEqual(rows[1][0], "1")
-        self.assertEqual(len(rows[1]), len(CSV_HEADER))
+        self.assertEqual(len(rows[1]), len(CSV_HEADER_V3))
 
     def test_logger_never_overwrites(self):
         first = DataLogger(self.directory, today=date(2026, 9, 15))
@@ -63,6 +63,20 @@ class DataLoggerTests(unittest.TestCase):
         self.assertEqual(tuple(rows[0]), CSV_HEADER_V2)
         self.assertEqual(len(rows[1]), len(CSV_HEADER_V2))
 
+    def test_logger_selects_v1_header_from_first_record(self):
+        values = {
+            "seq": 1, "time_ms": 0, "bme_ok": False, "sps_ok": False,
+            "gps_ok": False, "sd_ok": True,
+        }
+        measurement = parse_csv_line(encode_csv_row(values, schema_version=1))
+        logger = DataLogger(self.directory, today=date(2026, 9, 15))
+        path = logger.path
+        logger.write(measurement)
+        logger.close()
+        with path.open(encoding="utf-8", newline="") as file:
+            rows = list(csv.reader(file))
+        self.assertEqual(tuple(rows[0]), CSV_HEADER)
+
 
 class MockGeneratorTests(unittest.TestCase):
     def test_mock_rows_parse_and_change(self):
@@ -72,6 +86,8 @@ class MockGeneratorTests(unittest.TestCase):
         self.assertEqual((first.seq, second.seq), (1, 2))
         self.assertNotEqual(first.temperature_C, second.temperature_C)
         self.assertTrue(second.gps_ok)
+        self.assertEqual(second.schema_version, 3)
+        self.assertTrue(second.env_ok and second.imu_ok and second.rtc_ok)
 
 
 if __name__ == "__main__":

@@ -73,7 +73,10 @@ class MockFlightIntegrationTests(unittest.TestCase):
         shutil.rmtree(self.root)
 
     def test_mock_fc_to_v2_telemetry_and_ground_parser(self):
-        config = SimulationConfig(atmosphere_mode=AtmosphereMode.STANDARD_ATMOSPHERE)
+        config = SimulationConfig(
+            atmosphere_mode=AtmosphereMode.STANDARD_ATMOSPHERE,
+            telemetry_schema_version=2,
+        )
         runtime = SimulationRuntime(
             config, self.root / "data", self.root / "run",
             flight_source=MockFlightTelemetrySource(),

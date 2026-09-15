@@ -42,7 +42,7 @@ def available_ports() -> list[str]:
 
 
 def probe_port(port: str, seconds: float | None = None) -> bool:
-    """포트를 잠시 읽어 정상 18열 telemetry가 오는지 확인합니다."""
+    """포트를 잠시 읽어 지원되는 v1/v2/v3 telemetry가 오는지 확인합니다."""
     if serial is None:
         raise RuntimeError(
             "pyserial이 설치되지 않았습니다: python -m pip install -r requirements.txt"
@@ -109,7 +109,7 @@ class SerialReceiver:
             if self._stop.is_set():
                 return None
             # 사용자가 고른/이전에 성공한 포트는 즉시 열고, 대체 포트는
-            # 정상 18열 telemetry를 실제로 확인한 뒤 선택합니다.
+            # 지원되는 telemetry를 실제로 확인한 뒤 선택합니다.
             if port != self.preferred_port and not probe_port(port):
                 continue
             try:

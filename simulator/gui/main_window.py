@@ -49,8 +49,10 @@ class MainWindow(QMainWindow):
         self.loss = self._spin(0, 100, 0); self.latency = self._spin(0, 10000, 0)
         self.jitter = self._spin(0, 10000, 0); self.radio_range = self._spin(0, 1_000_000, 0)
         self.radio_range.setSpecialValueText("Unlimited")
-        self.bme_fail = QCheckBox(); self.sps_fail = QCheckBox(); self.gps_fail = QCheckBox(); self.sd_fail = QCheckBox()
-        self.flight_mode = QComboBox(); self.flight_mode.addItems(["MOCK", "OFF", "MAVLINK"])
+        self.aht_fail = QCheckBox(); self.bmp_fail = QCheckBox()
+        self.imu_fail = QCheckBox(); self.rtc_fail = QCheckBox()
+        self.gps_fail = QCheckBox(); self.sd_fail = QCheckBox()
+        self.flight_mode = QComboBox(); self.flight_mode.addItems(["OFF", "MOCK", "MAVLINK"])
         self.flight_endpoint = QLineEdit("udp:127.0.0.1:14550")
         self.flight_timeout = QSpinBox(); self.flight_timeout.setRange(100, 60000); self.flight_timeout.setValue(3000)
         for label, widget in (
@@ -62,7 +64,8 @@ class MainWindow(QMainWindow):
             ("Radio failure mode", self.radio_failure), ("Radio loss (%)", self.loss),
             ("Radio latency (ms)", self.latency), ("Radio jitter std (ms)", self.jitter),
             ("Radio max range (m)", self.radio_range),
-            ("BME failure", self.bme_fail), ("SPS failure", self.sps_fail),
+            ("AHT20 failure", self.aht_fail), ("BMP280 failure", self.bmp_fail),
+            ("MPU6050 failure", self.imu_fail), ("RTC failure", self.rtc_fail),
             ("GPS dropout", self.gps_fail), ("SD failure", self.sd_fail),
             ("Flight source", self.flight_mode),
             ("MAVLink endpoint", self.flight_endpoint),
@@ -75,8 +78,8 @@ class MainWindow(QMainWindow):
         self.start_button.clicked.connect(self._start_webots); self.source_button.clicked.connect(self._show_source)
 
         right = QVBoxLayout(); columns.addLayout(right, 1)
-        self.table = QTableWidget(8, 3); self.table.setHorizontalHeaderLabels(["Quantity", "EARTH TRUE VALUE", "SENSOR READING"])
-        for row, name in enumerate(("Temperature °C", "Pressure hPa", "Humidity %", "PM2.5 µg/m³", "PM10 µg/m³", "Altitude m", "Ground speed m/s", "Status")):
+        self.table = QTableWidget(9, 3); self.table.setHorizontalHeaderLabels(["Quantity", "EARTH TRUE VALUE", "SENSOR READING"])
+        for row, name in enumerate(("Temperature °C", "Pressure hPa", "Humidity %", "Barometric altitude m", "GPS altitude m", "Ground speed m/s", "Acceleration xyz m/s²", "Gyro xyz °/s", "Status")):
             self.table.setItem(row, 0, QTableWidgetItem(name))
         self.table.horizontalHeader().setStretchLastSection(True); right.addWidget(self.table)
         self.vector_label = QLabel("TRUE WIND: -\nPAYLOAD GROUND VELOCITY: -\nRELATIVE AIR VELOCITY: -")
@@ -92,15 +95,25 @@ class MainWindow(QMainWindow):
 
     def _config(self) -> dict[str, object]:
         seed = self.wind_panel.seed.value()
+        schema_version = 3 if self.flight_mode.currentText() == "OFF" else 2
         values = self.environment_panel.values()
         values.update({
             "initial_altitude_m": self.altitude.value(), "initial_velocity_east_mps": self.v_east.value(),
             "initial_velocity_north_mps": self.v_north.value(), "initial_velocity_vertical_mps": self.v_vertical.value(),
             "payload_mass_kg": self.mass.value(), "drag_coefficient": self.cd.value(),
             "reference_area_m2": self.area.value(), "telemetry_interval_s": 1.0,
+            "telemetry_schema_version": schema_version, "sea_level_pressure_hpa": 1013.25,
+            "simulation_epoch_unix": 1767225600,
             "random_seed": seed, "wind": self.wind_panel.values(),
             "noise": {"mode": self.noise_mode.currentText(), "enabled": self.noise_enable.isChecked(), "strength": self.noise_strength.value(), "random_seed": seed},
-            "failures": {"bme280_failure": self.bme_fail.isChecked(), "sps30_failure": self.sps_fail.isChecked(), "gps_dropout": self.gps_fail.isChecked(), "sd_failure": self.sd_fail.isChecked()},
+            "failures": {
+                "aht20_failure": self.aht_fail.isChecked(),
+                "bmp280_failure": self.bmp_fail.isChecked(),
+                "mpu6050_failure": self.imu_fail.isChecked(),
+                "rtc_failure": self.rtc_fail.isChecked(),
+                "gps_dropout": self.gps_fail.isChecked(),
+                "sd_failure": self.sd_fail.isChecked(),
+            },
             "radio": {"failure_test_enabled": self.radio_failure.isChecked(),
                       "packet_loss_probability": self.loss.value() / 100.0,
                       "latency_ms": self.latency.value(), "jitter_ms": self.jitter.value(),
@@ -157,8 +170,19 @@ class MainWindow(QMainWindow):
         except (OSError, json.JSONDecodeError): return
         true, sensor = data["true"], data["sensor"]
         ground = true["ground_velocity_enu_mps"]
-        true_values = [true["temperature_C"], true["pressure_hPa"], true["humidity_pct"], true["pm25_ugm3"], true["pm10_ugm3"], true["altitude_m"], sum(v*v for v in ground[:2]) ** 0.5, data["mode"]]
-        sensor_values = [sensor["temperature_C"], sensor["pressure_hPa"], sensor["humidity_pct"], sensor["pm25_ugm3"], sensor["pm10_ugm3"], sensor["gps_altitude_m"], sensor["gps_speed_mps"], f"BME={sensor['bme_ok']} SPS={sensor['sps_ok']} GPS={sensor['gps_ok']} SD={sensor['sd_ok']}"]
+        true_values = [
+            true["temperature_C"], true["pressure_hPa"], true["humidity_pct"],
+            true["altitude_m"], true["altitude_m"],
+            sum(v*v for v in ground[:2]) ** 0.5, None, None, data["mode"],
+        ]
+        acceleration = (sensor["accel_x_mps2"], sensor["accel_y_mps2"], sensor["accel_z_mps2"])
+        gyro = (sensor["gyro_x_dps"], sensor["gyro_y_dps"], sensor["gyro_z_dps"])
+        sensor_values = [
+            sensor["temperature_C"], sensor["pressure_hPa"], sensor["humidity_pct"],
+            sensor["barometric_altitude_m"], sensor["gps_altitude_m"],
+            sensor["gps_speed_mps"], str(acceleration), str(gyro),
+            f"ENV={sensor['env_ok']} IMU={sensor['imu_ok']} GPS={sensor['gps_ok']} RTC={sensor['rtc_ok']} SD={sensor['sd_ok']}",
+        ]
         for row, (earth, measured) in enumerate(zip(true_values, sensor_values)):
             self.table.setItem(row, 1, QTableWidgetItem("N/A" if earth is None else f"{earth:.3f}" if isinstance(earth, (int, float)) else str(earth)))
             self.table.setItem(row, 2, QTableWidgetItem("N/A" if measured is None else f"{measured:.3f}" if isinstance(measured, (int, float)) else str(measured)))

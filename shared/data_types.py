@@ -45,6 +45,8 @@ class PayloadState:
     position_m: Vector3
     velocity_ground_mps: Vector3
     orientation_axis_angle: tuple[float, float, float, float]
+    linear_acceleration_world_mps2: Optional[Vector3] = None
+    angular_velocity_world_rps: Optional[Vector3] = None
 
 
 @dataclass(frozen=True)
@@ -65,4 +67,14 @@ class SensorReadings:
     sps_ok: bool
     gps_ok: bool
     sd_ok: bool
-
+    barometric_altitude_m: Optional[float] = None
+    accel_x_mps2: Optional[float] = None
+    accel_y_mps2: Optional[float] = None
+    accel_z_mps2: Optional[float] = None
+    gyro_x_dps: Optional[float] = None
+    gyro_y_dps: Optional[float] = None
+    gyro_z_dps: Optional[float] = None
+    rtc_unix_time: Optional[int] = None
+    env_ok: bool = False
+    imu_ok: bool = False
+    rtc_ok: bool = False

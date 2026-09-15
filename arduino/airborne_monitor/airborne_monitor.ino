@@ -1,5 +1,4 @@
 #include "config.h"
-#include "flight_link.h"
 #include "health.h"
 #include "measurement.h"
 #include "scheduler.h"
@@ -14,52 +13,37 @@ static char csvRow[CSV_ROW_BUFFER_SIZE];
 
 void setup() {
   Serial.begin(SERIAL_BAUD_DEBUG);
-  Serial3.begin(SERIAL_BAUD_XBEE);
+  Serial3.begin(SERIAL_BAUD_HC12);
   initializeHealth(health);
-
   const uint32_t nowMs = millis();
   initializeSensors(health, nowMs);
-  initializeFlightLink(nowMs);
   initializeStorage(health, nowMs);
   initializeScheduler(scheduler, nowMs);
-
-  Serial.println(F("Airborne environment monitor started"));
+  Serial.println(F("Airborne environment monitor v3 started"));
+  Serial.println(F("UART: Serial1=GNSS Serial2=reserved Serial3=HC-12"));
   printHealthSummary(health);
 }
 
 void loop() {
   const uint32_t nowMs = millis();
-  // GNSS 문자는 샘플링 시점과 무관하게 매 loop에서 계속 파싱합니다.
   pollGnss();
-  pollFlightLink(nowMs);
-  serviceFlightLink(nowMs);
-
   serviceSensors(health, nowMs);
   serviceStorage(health, nowMs);
-
-  if (!sampleIsDue(scheduler, nowMs, SAMPLE_INTERVAL_MS)) {
-    return;
-  }
+  if (!sampleIsDue(scheduler, nowMs, SAMPLE_INTERVAL_MS)) return;
 
   Measurement measurement;
   ++sequenceNumber;
   clearMeasurement(measurement, sequenceNumber, nowMs);
   sampleSensors(measurement, health, nowMs);
-  applyFlightStatusToMeasurement(measurement, health, nowMs);
   measurement.sdOk = storageIsReady();
 
-  // 이 행을 단 한 번 만든 다음 SD와 XBee 양쪽에 같은 버퍼를 전달합니다.
-  const bool formatted = flightControllerPositionEnabled()
-      ? formatCsvRowV2(measurement, currentFlightStatus(), csvRow, sizeof(csvRow))
-      : formatCsvRow(measurement, csvRow, sizeof(csvRow));
-  if (!formatted) {
-    Serial.println(F("ERROR: CSV row buffer too small"));
+  if (!formatCsvRowV3(measurement, csvRow, sizeof(csvRow))) {
+    Serial.println(F("ERROR: CSV row buffer too small; row not sent or logged"));
     return;
   }
 
+  // The exact same immutable snapshot row goes to both independent sinks.
   appendStorageRow(csvRow, health, nowMs);
   sendTelemetryRow(csvRow);
-
-  // USB debug에는 무선으로 보낸 것과 같은 행을 보여 줍니다.
   Serial.println(csvRow);
 }

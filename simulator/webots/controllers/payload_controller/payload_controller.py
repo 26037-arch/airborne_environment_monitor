@@ -67,6 +67,8 @@ def main() -> None:
     trajectory_count = 0
     runtime = SimulationRuntime(config, PROJECT_ROOT / "simulator" / "data", run_directory)
     last_trail_time = -1.0
+    previous_linear_velocity = None
+    previous_state_time = None
 
     try:
         while robot.step(step_ms) != -1:
@@ -74,14 +76,26 @@ def main() -> None:
             position = tuple(float(value) for value in payload.getPosition())
             velocity = payload.getVelocity()
             rotation = tuple(float(value) for value in payload.getField("rotation").getSFRotation())
+            linear_velocity = tuple(float(velocity[i]) for i in range(3))
+            acceleration = None
+            if previous_linear_velocity is not None and previous_state_time is not None:
+                elapsed = now - previous_state_time
+                if elapsed > 0.0:
+                    acceleration = tuple(
+                        (linear_velocity[i] - previous_linear_velocity[i]) / elapsed
+                        for i in range(3)
+                    )
             latitude = config.latitude + position[1] / 111_320.0
             longitude = config.longitude + position[0] / max(
                 1.0, 111_320.0 * math.cos(math.radians(latitude))
             )
             state = PayloadState(
                 now, latitude, longitude, max(0.0, position[2]), position,
-                (float(velocity[0]), float(velocity[1]), float(velocity[2])), rotation,
+                linear_velocity, rotation, acceleration,
+                tuple(float(velocity[i]) for i in range(3, 6)),
             )
+            previous_linear_velocity = linear_velocity
+            previous_state_time = now
             drag_force, transmitted_rows, environment = runtime.step(state)
             payload.addForce(list(drag_force), False)
             relative_air = tuple(velocity[i] - environment.wind_vector[i] for i in range(3))

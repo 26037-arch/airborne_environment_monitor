@@ -1,14 +1,29 @@
-# Airborne Environment Monitoring Payload + Flight Controller Interface
+# Airborne Environment Monitor
 
-BME280/SPS30 환경 측정 payload를 PX4 또는 ArduPilot의 flight state와 결합하고, microSD와 XBee Transparent Mode로 Ground Station에 보내는 프로젝트입니다. 환경 측정과 flight control은 분리되어 있습니다. Arduino는 안정화 알고리즘, arming, ESC/실제 motor 제어를 담당하지 않습니다.
+Arduino Mega 2560이 AHT20, BMP280, MPU6050, NEO-M8N, RTC를 읽어 같은 schema v3 CSV snapshot을 microSD에 우선 기록하고 HC-12로 전송합니다. 지상의 Arduino Uno는 HC-12 수신 바이트를 USB Serial로 그대로 넘기며, PC가 검증·로깅·그래프·packet loss 분석을 담당합니다.
 
-처음 검토할 때는 [architecture.md](docs/architecture.md)와 [기존 architecture 분석표](docs/architecture_analysis.md), Flight Controller를 연결할 때는 [flight_controller.md](docs/flight_controller.md), 배선할 때는 [wiring.md](docs/wiring.md)를 보세요.
+이 프로젝트는 환경 측정 payload입니다. motor PWM, ESC/servo command, arming, 자동 이륙, 자세 안정화 또는 자율비행을 구현하지 않습니다. 기존 PX4/ArduPilot adapter 파일은 future/optional interface로 보존되지만 기본 Mega runtime과 simulator config에서는 사용하지 않습니다.
 
-Webots에서 초기 고도부터 하강·이동하며 telemetry를 생성하려면 [simulator/README.md](simulator/README.md)를 보세요. `shared/` parser는 기존 18열 v1과 flight state가 붙은 29열 v2를 자동 판별하므로 과거 CSV와 Ground Station을 계속 사용할 수 있습니다.
+## Hardware architecture
 
-## 가장 빠른 시작: 하드웨어 없이 확인
+```text
+AHT20 ─┐
+BMP280 ├─ I2C ─ Arduino Mega 2560 ─ SPI ─ microSD (primary record)
+MPU6050┤                │
+RTC ───┘                ├─ Serial1 ← NEO-M8N
+                        ├─ Serial2   reserved/future FC
+                        └─ Serial3 ↔ HC-12
+                                      )) 433 MHz ((
+                                  HC-12 ↔ Arduino Uno ↔ USB ↔ PC
+```
 
-Windows에서 Python 3.11을 설치한 뒤 PowerShell 또는 명령 프롬프트를 엽니다.
+보유 Arduino Uno는 폐기하지 않고 지상 수신기로 재사용합니다. 추가 구매의 필수 최소치는 Mega 2560 compatible board 1개와 HC-12 1개입니다. Logic-level shifter는 실제 breakout의 허용 전압을 확인한 뒤 필요한 경우에만 추가합니다.
+
+보유 장비 중 NEO-M8N은 1개만 공중 payload에 사용하고 두 번째 모듈은 future `spare`로 기록합니다. AHT20+BMP280 복합 모듈, MPU6050, microSD, RTC, HC-12와 3.3 V/5 V DC-DC converter는 실제 board 표기와 전기 사양을 확인한 뒤 사용합니다.
+
+## Quick start
+
+하드웨어 없이 v3 Ground Station을 확인합니다.
 
 ```powershell
 cd ground_station
@@ -16,222 +31,48 @@ python -m pip install -r requirements.txt
 python main.py --mock
 ```
 
-또는 `ground_station/run_mock.bat`을 더블 클릭합니다. GUI가 열리고, 1초마다 가상 데이터가 표시되며 `ground_station/data/`에 CSV가 생깁니다.
+Mega IDE libraries:
 
-GUI 없이 5초만 점검하려면 다음을 실행합니다.
+- Adafruit AHTX0
+- Adafruit BMP280 Library
+- Adafruit MPU6050
+- Adafruit Unified Sensor
+- TinyGPSPlus
+- RTClib: RTC 칩이 DS3231-compatible로 실제 확인된 경우에만
+- Arduino SD/SPI
 
-```powershell
-python main.py --mock --headless --duration 5
-```
+`arduino/airborne_monitor/config.h`에서 `SEA_LEVEL_PRESSURE_HPA`, SD CS, baud, MPU6050 offsets와 RTC driver를 설정합니다. `DM941` 표기만으로 RTC IC를 알 수 없으므로 기본값은 `RTC_DRIVER_DISABLED`입니다. 칩·주소를 확인한 뒤 DS3231-compatible일 때만 driver를 활성화하십시오.
 
-## 1. 구성품
+두 HC-12의 UART 설정은 모두 `SERIAL_BAUD_HC12=9600`과 일치해야 합니다. Main runtime에서 HC-12 AT command mode를 사용하지 않습니다.
 
-- Arduino Mega 2560
-- BME280 I2C 센서 모듈
-- Sensirion SPS30 (UART/SHDLC)
-- NMEA를 출력하는 GNSS 모듈
-- Mega 호환 microSD SPI 모듈과 FAT16/FAT32 카드
-- 공중용 XBee와 PC용 XBee USB 어댑터 한 쌍
-- 모듈 사양에 맞는 전원, 배선, 필요 시 논리 레벨 변환기
+## Run and verify
 
-모듈 이름이 같아도 breakout board의 입력 전압과 논리 레벨은 다를 수 있습니다. 특히 Mega의 UART TX는 5 V 논리입니다. 제조사 회로도와 데이터시트를 확인한 후 연결하십시오. 모든 장치는 GND를 공통으로 연결해야 합니다.
+1. 전원을 끄고 [배선/전원 주의사항](docs/wiring.md)을 확인합니다.
+2. Mega sketch를 업로드하고 Serial Monitor 115200 baud에서 I2C probe와 health summary를 봅니다.
+3. Uno에 `arduino/ground_hc12_bridge/ground_hc12_bridge.ino`를 업로드합니다.
+4. PC에서 `python ground_station/main.py --port COM5`처럼 Uno 포트를 엽니다.
+5. SD의 `FLIGHTnn.CSV`와 PC `ground_station/data/flight_*.csv`를 비교합니다.
 
-## 2. Arduino IDE 준비
+SD가 실패해도 HC-12는 계속 전송하고, HC-12가 끊겨도 SD 기록은 계속 시도합니다. 한 센서 실패는 다른 센서·SD·radio를 중단하지 않습니다. `gps_speed_mps`는 풍속이 아니라 **GNSS ground speed**입니다.
 
-Arduino IDE 2.x의 Library Manager에서 다음 이름으로 설치합니다.
+## Telemetry and compatibility
 
-1. `Adafruit BME280 Library`
-2. `Adafruit Unified Sensor` (BME280 의존성)
-3. `Sensirion UART SPS30`
-4. `Sensirion Core` (SPS30 의존성)
-5. `TinyGPSPlus`
+Schema v3는 PM 필드가 없습니다. 보유 장비에 particulate sensor가 없기 때문입니다. 과거 v1/v2 parser, replay, logger와 legacy simulator encoder는 그대로 유지됩니다. 자세한 열과 `NA` 규칙은 [data_format.md](docs/data_format.md)를 참고하십시오.
 
-`SD`와 `SPI`는 Arduino AVR 보드 패키지에 포함됩니다. SPS30에는 이름이 비슷한 구형/비공식 라이브러리가 여럿 있으므로 이 프로젝트는 `#include <SensirionUartSps30.h>`를 제공하는 공식 **Sensirion UART SPS30** 라이브러리를 사용합니다.
+Simulator는 기존 EarthEnvironment, ERA5/CAMS/COESA, wind, Webots physics와 provenance를 유지하면서 v3 AHT20/BMP280/MPU6050/NEO-M8N/RTC measurement를 생성합니다. CAMS PM은 truth에 남지만 v3 hardware telemetry에 복제하지 않습니다.
 
-공식 참고 자료:
-
-- [Adafruit BME280 Library](https://github.com/adafruit/Adafruit_BME280_Library)
-- [Sensirion UART SPS30](https://github.com/Sensirion/arduino-uart-sps30)
-- [TinyGPSPlus](https://github.com/mikalhart/TinyGPSPlus)
-- [Arduino SD](https://github.com/arduino-libraries/SD)
-
-## 3. Arduino 설정과 업로드
-
-1. [wiring.md](docs/wiring.md)의 표에 따라 전원을 끈 상태에서 배선합니다.
-2. microSD를 FAT16 또는 FAT32로 포맷하고 삽입합니다.
-3. Arduino IDE에서 `arduino/airborne_monitor/airborne_monitor.ino`를 엽니다.
-4. Board를 `Arduino Mega or Mega 2560`, Processor를 `ATmega2560`으로 선택합니다.
-5. 보드가 연결된 Port를 선택하고 업로드합니다.
-6. Serial Monitor를 115200 baud로 열어 초기화 결과와 1 Hz CSV 행을 확인합니다.
-
-학교 환경에서 바꿀 값은 [config.h](arduino/airborne_monitor/config.h)에 모았습니다. 기본값은 다음과 같습니다.
-
-| 설정 | 기본값 | 의미 |
-|---|---:|---|
-| `SAMPLE_INTERVAL_MS` | 1000 | 측정 주기, 1 Hz |
-| `SPS30_WARMUP_MS` | 30000 | PM 값이 `NA`인 워밍업 시간 |
-| `SD_CS_PIN` | 4 | SD 모듈 CS 핀 |
-| `SERIAL_BAUD_DEBUG` | 115200 | USB Serial Monitor |
-| `SERIAL_BAUD_SPS30` | 115200 | Serial1 |
-| `SERIAL_BAUD_GNSS` | 9600 | direct GNSS mode의 Serial2 |
-| `SERIAL_BAUD_FLIGHT_CONTROLLER` | 115200 | Flight Controller mode의 Serial2 |
-| `POSITION_SOURCE` | direct GNSS | 기존 GNSS 또는 MAVLink source 선택 |
-| `SERIAL_BAUD_XBEE` | 115200 | Serial3와 두 XBee의 UART baud |
-| `MOCK_SENSORS` | 0 | 1이면 센서 대신 Arduino 가상값 |
-
-`MOCK_SENSORS=1`도 SD와 XBee는 실제로 사용합니다. 센서 입력, CSV 포맷, scheduler를 분리해서 확인하기 위한 모드입니다. SPS30 워밍업을 기다리기 싫으면 시험할 때만 `SPS30_WARMUP_MS`를 줄이십시오.
-
-## 4. XBee 설정
-
-두 XBee를 같은 네트워크로 구성하고 UART를 115200 baud, 8 data bits, no parity, 1 stop bit로 맞춥니다. 공중 XBee의 목적지가 지상 XBee가 되도록 제조사 설정 도구에서 주소를 지정합니다. 이 프로젝트는 XBee API frame을 사용하지 않고 Transparent Mode에서 `CSV + newline`만 전송합니다.
-
-무선 링크를 먼저 제조사 terminal 도구로 시험한 뒤 지상국을 실행하면 문제를 빠르게 분리할 수 있습니다.
-
-## 5. PC 지상국 설치
-
-Python 3.11 설치 화면에서 `Add python.exe to PATH`를 선택합니다. 그다음:
+## Tests
 
 ```powershell
-cd ground_station
-python -m pip install -r requirements.txt
-python main.py
+python -m unittest discover -v
+python -m unittest discover -s ground_station/tests -v
 ```
 
-프로그램은 COM 포트를 하나씩 잠시 읽고 정상 18열 telemetry를 보내는 장치를 선택합니다. 자동 탐색에 실패하면 포트 목록을 출력하고 terminal 실행에서는 번호 선택 기회를 줍니다. 연결이 나중에 끊겨도 창은 닫히지 않고 `DISCONNECTED → RECONNECTING → CONNECTED` 상태로 재접속합니다.
-
-포트를 직접 지정할 수도 있습니다.
-
-```powershell
-python main.py --port COM5
-```
-
-사용 가능한 포트만 보려면:
-
-```powershell
-python main.py --list-ports
-```
-
-## 6. 정상 실행 순서
-
-1. 전원을 끄고 배선과 논리 레벨을 확인합니다.
-2. FAT16/FAT32 microSD를 삽입합니다.
-3. Arduino 코드를 업로드합니다.
-4. Serial Monitor 115200 baud에서 BME/SPS/SD 초기화 메시지를 봅니다.
-5. 공중/지상 XBee의 전원과 Transparent Mode 설정을 확인합니다.
-6. 지상 XBee USB 어댑터를 Windows PC에 연결합니다.
-7. `python main.py` 또는 `run_ground_station.bat`을 실행합니다.
-8. 화면의 `CONNECTED`와 수신 sequence 증가를 확인합니다.
-9. 종료 후 Arduino SD의 `FLIGHTnn.CSV`와 PC `data/flight_날짜_nnn.csv`를 비교합니다.
-
-## 7. 화면에서 보이는 것
-
-왼쪽은 Environment, Flight, System panel로 나뉩니다. v2에서는 자세, 추정 고도, 수직속도, battery, armed/mode, Flight Controller link를 함께 표시하고 v1에서는 해당 항목을 `N/A`로 표시합니다. 오른쪽 graph와 최근 120점 제한, 전체 유효 CSV 즉시 기록은 그대로입니다.
-
-`gps_speed_mps`는 **GNSS ground speed**이며 실제 풍속이 아닙니다.
-
-## 8. 실패 시 동작
-
-- BME280 실패: 온도/습도/기압은 `NA`, `bme_ok=0`; 다른 기능 계속
-- SPS30 워밍업/실패: 네 PM 값은 `NA`, `sps_ok=0`; 다른 기능 계속
-- GNSS fix 없음/오래됨: 다섯 GNSS 값은 `NA`, `gps_ok=0`; NMEA parsing 계속
-- SD 없음/쓰기 실패: `sd_ok=0`; XBee 전송 계속, 5초 간격 재초기화
-- XBee/USB 단절: Arduino SD 기록 계속; PC는 재연결 시도
-- 손상된/부분 CSV: PC 저장·그래프에서 제외하고 오류 수만 표시
-- Arduino 재부팅: seq 감소를 PC가 reset으로 보고 새 기준점에서 추적
-
-SD 쓰기 결과는 미리 알 수 없으므로 한 행의 `sd_ok`는 **그 행을 쓰기 직전까지 확인된 SD 상태**입니다. 실제 쓰기가 실패하면 해당 행은 무선으로는 전달되고, 다음 행부터 `sd_ok=0`이 됩니다.
-
-## 9. 테스트
-
-외부 test framework 없이 Python 표준 `unittest`를 사용합니다.
-
-```powershell
-cd ground_station
-python -m unittest discover -s tests -v
-```
-
-테스트 범위는 정상/비정상 CSV parsing, `NA`, 열 수, 상태 flag, packet loss, sequence reset, 덮어쓰기 방지 logger, mock 변화입니다.
-
-추가 테스트는 v1/v2 호환, FlightStatus MAVLink message mapping, timeout, invalid attitude 거부, missing Flight Controller, mock FC→v2→Ground Station parser integration을 포함합니다.
-
-Arduino CLI가 설치된 PC에서는 라이브러리를 설치한 뒤 다음처럼 실제 컴파일 검증을 할 수 있습니다.
+Arduino CLI와 필요한 core/library가 설치된 경우:
 
 ```powershell
 arduino-cli compile --fqbn arduino:avr:mega arduino/airborne_monitor
+arduino-cli compile --fqbn arduino:avr:uno arduino/ground_hc12_bridge
 ```
 
-현재 소스의 CSV formatter는 센서 객체와 분리된 순수 함수이며, 고정 384-byte buffer 밖에 쓰지 않으면 `false`를 반환합니다. Direct GNSS mode는 `formatCsvRow()` v1, Flight Controller mode는 `formatCsvRowV2()`를 사용합니다.
-
-## 10. 파일 안내
-
-```text
-airborne_environment_monitor/
-├─ README.md
-├─ docs/
-│  ├─ architecture.md
-│  ├─ wiring.md
-│  ├─ flight_controller.md
-│  ├─ architecture_analysis.md
-│  ├─ data_format.md
-│  ├─ troubleshooting.md
-│  ├─ example_screen.md
-│  └─ validation.md
-├─ arduino/airborne_monitor/
-│  ├─ airborne_monitor.ino
-│  ├─ config.h
-│  ├─ measurement.h
-│  ├─ flight_status.h
-│  ├─ flight_link.h/.cpp
-│  ├─ sensors.h/.cpp
-│  ├─ telemetry.h/.cpp
-│  ├─ storage.h/.cpp
-│  ├─ scheduler.h/.cpp
-│  └─ health.h/.cpp
-├─ ground_station/
-│  ├─ main.py
-│  ├─ config.py
-│  ├─ data_model.py
-│  ├─ serial_receiver.py
-│  ├─ data_logger.py
-│  ├─ mock_data.py
-│  ├─ dashboard.py
-│  ├─ requirements.txt
-│  ├─ run_ground_station.bat
-│  ├─ run_mock.bat
-│  ├─ data/
-│  └─ tests/
-├─ shared/
-│  ├─ telemetry_schema.py
-│  ├─ telemetry_sources.py
-│  ├─ flight_status.py
-│  └─ data_types.py
-├─ simulator/
-│  ├─ README.md
-│  ├─ environment/
-│  ├─ flight/
-│  ├─ sensors/
-│  ├─ telemetry/
-│  ├─ gui/
-│  ├─ webots/
-│  ├─ tools/
-│  ├─ data/
-│  └─ tests/
-└─ examples/example_flight.csv, example_flight_v2.csv
-```
-
-## UNCHANGED CORE
-
-- BME280 측정, SPS30 warm-up/측정, direct GNSS mode
-- microSD CSV append와 XBee transparent telemetry
-- 기존 18열 v1 schema와 CSV replay
-- Ground Station receiver thread/`queue.Queue`, sequence loss tracker
-- `EarthEnvironment`, ERA5, CAMS, COESA 1976, wind와 sensor simulation
-
-## NEW ADAPTER LAYER
-
-- Arduino의 fixed-size `FlightStatus`와 optional MAVLink `flight_link`
-- Python mock/null/MAVLink flight telemetry source
-- 기존 18열 뒤에 flight state를 붙인 29열 v2
-- Ground Station Flight/System panel과 simulator runtime composition
-
-PX4/ArduPilot, MAVLink, pymavlink를 검증된 외부 component로 사용하며 flight-control engine 자체를 저장소 안에서 다시 구현하지 않습니다. 현재 실제 hardware와 SITL/Webots actuator closed loop 검증 범위는 [flight_controller.md](docs/flight_controller.md)에 명시되어 있습니다.
+상세 설계는 [architecture.md](docs/architecture.md), 변경 경계는 [architecture_analysis.md](docs/architecture_analysis.md), 검증 범위는 [validation.md](docs/validation.md)를 참고하십시오.

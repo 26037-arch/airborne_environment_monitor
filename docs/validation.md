@@ -1,94 +1,51 @@
-# 구현 검증 기록
+# Validation record
 
-검증일: 2026-09-15
+Validation date: 2026-09-15
 
-## Arduino Mega 2560 baseline compile
-
-공식 Arduino Library Manager index에서 다음 버전을 설치한 임시 Arduino CLI 환경으로 `arduino:avr:mega`를 실제 컴파일했습니다.
-
-| 구성 | 검증 버전 |
-|---|---:|
-| Arduino AVR Boards | 1.8.8 |
-| Adafruit BME280 Library | 2.3.0 |
-| Adafruit Unified Sensor | 1.1.15 |
-| Adafruit BusIO | 1.17.4 |
-| Sensirion UART SPS30 | 1.0.1 |
-| Sensirion Core | 0.7.3 |
-| TinyGPSPlus | 1.0.3 |
-| SD | 1.3.0 |
-
-실제 센서 build 결과:
+## Automated results
 
 ```text
-Sketch uses 35358 bytes (13%) of program storage space. Maximum is 253952 bytes.
-Global variables use 2164 bytes (26%) of dynamic memory, leaving 6028 bytes. Maximum is 8192 bytes.
+python -m unittest discover -v
+Ran 27 tests - OK
+
+python -m unittest discover -s ground_station/tests -v
+Ran 16 tests - OK
+
+python -m compileall -q shared ground_station simulator
+OK
 ```
 
-`MOCK_SENSORS=1` build도 성공했습니다. 이 수치는 flight adapter 추가 전 baseline commit의 결과입니다.
+Coverage includes v1 parser regression, v2 parser regression, v3 complete/missing GPS/missing RTC/missing IMU/missing environment, non-finite rejection, invalid flag rejection, v1/v2/v3 logger and replay selection, sequence loss, simulator-to-v3 parser, legacy v2 Flight adapter, and sensor failure isolation.
 
-현재 작업 환경에는 `arduino-cli`가 설치되어 있지 않아 adapter 추가 후 Arduino build는 실행하지 못했습니다. 기본 direct-GNSS mode와 Flight Controller mode를 각각 compile해야 하며, 후자는 공식 MAVLink `c_library_v2` header가 추가로 필요합니다. Python 정적 test는 Arduino v1/v2 header 문자열이 공용 schema와 일치하는지 검사합니다.
+Headless Ground Station checks also passed:
 
-## Python 검증
+- v3 mock generated and logged three valid changing rows
+- `examples/example_flight_v3.csv` replay parsed and logged two rows
 
-Python source 전체 byte-compile과 Ground Station 13개, simulator 24개 unit/integration test를 실행했습니다.
+The environment core tests for COESA, ERA5/CAMS interpolation/conversion/fallback, deterministic wind/radio, provenance/error files and Webots asset declarations continue to pass.
 
-```text
-CSV valid row parsing
-NA sensor row parsing
-invalid column count
-invalid status flag
-packet loss detection
-sequence reset
-logger header/row
-logger no-overwrite naming
-mock row parse/change
-v1/v2 parser와 replay/logger compatibility
-MAVLink FlightStatus mapping과 invalid data 무시
-Flight Controller timeout/missing 상태
-mock FC → v2 telemetry → Ground Station parser
+## Arduino compile status
+
+`arduino-cli` is not installed in the validation environment. Therefore neither the Mega firmware nor Uno bridge was compiled here, and no new flash/SRAM figure is claimed. Install the AVR core and documented libraries, then run:
+
+```powershell
+arduino-cli compile --fqbn arduino:avr:mega arduino/airborne_monitor
+arduino-cli compile --fqbn arduino:avr:uno arduino/ground_hc12_bridge
 ```
 
-결과: Ground Station `Ran 13 tests ... OK`, simulator `Ran 24 tests ... OK`.
+RTC compilation with RTClib must be checked separately after the real RTC IC is identified and `RTC_DRIVER` is enabled.
 
-`python main.py --mock --headless --duration 2.2`도 실행해 1초 간격 3개 measurement 생성, parser 통과, PC CSV 생성과 flush를 확인했습니다.
+## Not hardware-verified
 
-## 요구사항 자체 점검
+- exact `DM941` RTC IC, address, register compatibility and battery state
+- AHT20/BMP280/MPU6050 breakout supply and I2C pull-up voltage
+- MPU6050 AD0 wiring and actual 0x69 response
+- NEO-M8N breakout baud, fix performance and 5 V input tolerance
+- HC-12 board supply/UART logic, RF pairing/range and sustained packet loss
+- microSD module level shifting, card latency and power-transient behavior
+- converter current margin, rail noise and full-system brownout behavior
+- actual sensor offsets and `SEA_LEVEL_PRESSURE_HPA` calibration
+- Webots GUI run and physical MPU axes against a real mounting orientation
+- PX4/ArduPilot/SITL optional adapter end-to-end behavior
 
-- Serial1=SPS30, Serial2=GNSS, Serial3=XBee; SoftwareSerial 없음
-- GNSS parser는 main loop마다 Serial2 available bytes를 소비
-- `delay()`와 무한 retry loop 없음
-- 1 Hz scheduler는 unsigned `millis()` subtraction 사용
-- 센서마다 invalid 값과 health flag가 독립적
-- SPS30 `WARMUP/READY/ERROR` 상태 및 조정 가능한 warm-up
-- 동적 문자열/JSON 없음; CSV buffer 384 bytes 고정
-- 같은 `csvRow`를 SD append 후 XBee 전송
-- SD 파일 자동 증가, header 우선 기록, failure 후 telemetry 지속
-- Arduino/Python v1 18열과 v2 29열 header/순서 동일
-- PC invalid row 제외, seq gap/reset 처리, serial 재연결
-- GUI graph는 최근 N점만 유지, 전체 유효 데이터는 CSV flush
-- PC mock과 Arduino compile-time mock 제공
-
-실물 센서의 전기적 호환성, GNSS NMEA baud/fix, XBee RF 설정, SD 카드 품질은 실제 하드웨어에서 최종 통합 시험이 필요합니다.
-
-## Webots simulator 검증
-
-2026-09-15에 Ground Station 13개와 simulator 24개 unit/integration test를 실행해 모두 통과했습니다. 검증 범위는 다음과 같습니다.
-
-- COESA 1976의 geometric altitude 0/1/5/10/20/32 km 기준 온도·압력·밀도; 허용 오차 0.05 K, 0.2%
-- ERA5 고도 보간, RH 범위, 증가하는 고도, 감소하는 압력, 범위 밖 무외삽
-- CAMS `kg/m³ × 1e9 = µg/m³`, 음수 거부, NaN 처리, surface 고도 무외삽
-- gust/random의 같은 seed·같은 step 완전 재현
-- Arduino와 동일한 18개 header/순서와 공용 parser
-- CSV replay source의 같은 parser 사용
-- 기본 radio failure bypass, loss와 latency
-- Scenario A: standard atmosphere + calm + ideal
-- Scenario B: 명시적으로 synthetic이라 표기한 loader fixture + constant wind + datasheet sensor
-- Scenario C: seed 12345의 gust 반복 일치
-- Scenario D: 10% radio loss 설정 + GPS dropout 행을 기존 parser가 정상 처리
-- Scenario E: CAMS 미설치 시 PM `NA`, COESA fallback 지속
-- truth/telemetry/provenance/error report 파일 생성
-- Webots world의 ENU, 20 ms(50 Hz), 중력, payload, radio, trajectory, 세 vector asset 정적 검사
-- v1/v2 CSV replay, mock Flight Controller integration, MAVLink timeout
-- BME/SPS/SD failure 중에도 GNSS/telemetry가 계속되는 failure isolation
-
-테스트 fixture는 데이터 loader의 구조와 계산만 검증하며 실제 지구 자료가 아닙니다. 현재 검증 PC에는 Webots/PX4/ArduPilot SITL이 준비되지 않아 GUI/물리 engine, HIL sensor injection, virtual actuator closed loop는 종단 실행하지 못했습니다. 실제 ERA5/CAMS Scenario B 지역 비교와 Arduino/MAVLink hardware link도 해당 장비와 공식 자료가 있는 환경에서 수행해야 합니다. 이 항목을 성공으로 가장하지 않습니다.
+These items must not be labelled verified until tested with the exact boards.

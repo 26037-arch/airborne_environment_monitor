@@ -3,12 +3,13 @@ import json
 import shutil
 import unittest
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
 from shared.data_types import PayloadState
-from shared.telemetry_schema import CSV_HEADER, parse_csv_line
+from shared.telemetry_schema import CSV_HEADER_V3, parse_csv_line
 from simulator.configuration import SimulationConfig
 from simulator.environment.earth_environment import AtmosphereMode, EarthEnvironment
 from simulator.environment.wind_model import WindConfig, WindMode, WindModel
@@ -62,7 +63,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertTrue(all(np.isfinite(drag)))
         self.assertEqual(len(rows), 1)
         with (run / "telemetry.csv").open(encoding="utf-8") as source:
-            self.assertEqual(tuple(next(csv.reader(source))), CSV_HEADER)
+            self.assertEqual(tuple(next(csv.reader(source))), CSV_HEADER_V3)
         self.assertTrue((run / "truth.csv").exists() and (run / "error_report.json").exists())
 
     def test_scenario_b_climatology_fixture_constant_wind_datasheet(self):
@@ -130,6 +131,28 @@ class ScenarioTests(unittest.TestCase):
         self.assertFalse(measurement.sd_ok)
         self.assertTrue(measurement.gps_ok)
         self.assertIsNotNone(measurement.latitude)
+
+    def test_v3_imu_rtc_and_environment_failures_are_isolated(self):
+        config = SimulationConfig(
+            atmosphere_mode=AtmosphereMode.STANDARD_ATMOSPHERE,
+            failures=FailureState(aht20_failure=True, rtc_failure=True),
+        )
+        runtime = SimulationRuntime(config, self.data, self.root / "v3_isolation")
+        base = self.state()
+        state = replace(
+            base,
+            linear_acceleration_world_mps2=(0.0, 0.0, 0.0),
+            angular_velocity_world_rps=(0.0, 0.0, 0.1),
+        )
+        _drag, rows, _env = runtime.step(state)
+        runtime.close()
+        measurement = parse_csv_line(rows[0])
+        self.assertEqual(measurement.schema_version, 3)
+        self.assertFalse(measurement.env_ok)
+        self.assertFalse(measurement.rtc_ok)
+        self.assertTrue(measurement.imu_ok)
+        self.assertTrue(measurement.gps_ok)
+        self.assertIsNotNone(measurement.pressure_hPa)
 
 
 if __name__ == "__main__":

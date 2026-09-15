@@ -3,7 +3,7 @@ import unittest
 import uuid
 from pathlib import Path
 
-from shared.telemetry_schema import CSV_HEADER, CSV_HEADER_V2, encode_csv_row
+from shared.telemetry_schema import CSV_HEADER, CSV_HEADER_V2, CSV_HEADER_V3, encode_csv_row
 from shared.telemetry_sources import CSVReplaySource, TelemetrySource
 
 
@@ -50,6 +50,22 @@ class TelemetrySourceTests(unittest.TestCase):
         source = CSVReplaySource(path, realtime=False)
         try:
             self.assertEqual(source.read().schema_version, 2)
+        finally:
+            source.close()
+
+    def test_v3_replay_is_accepted(self):
+        path = self.directory / "flight_v3.csv"
+        values = {
+            "seq": 1, "time_ms": 0, "env_ok": False, "imu_ok": False,
+            "gps_ok": False, "rtc_ok": False, "sd_ok": True,
+        }
+        path.write_text(
+            ",".join(CSV_HEADER_V3) + "\n" +
+            encode_csv_row(values, schema_version=3) + "\n", encoding="utf-8"
+        )
+        source = CSVReplaySource(path, realtime=False)
+        try:
+            self.assertEqual(source.read().schema_version, 3)
         finally:
             source.close()
 

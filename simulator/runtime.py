@@ -25,8 +25,11 @@ class SimulationRuntime:
         self.config = config
         from .environment.wind_model import WindModel
         self.environment = EarthEnvironment(data_root, WindModel(config.wind), config.custom_environment)
-        self.sensors = SensorSuite(config.noise)
-        self.encoder = TelemetryEncoder()
+        self.sensors = SensorSuite(
+            config.noise, config.sea_level_pressure_hpa,
+            config.simulation_epoch_unix,
+        )
+        self.encoder = TelemetryEncoder(config.telemetry_schema_version)
         self.radio = VirtualRadio(config.radio)
         self.flight_source = flight_source or create_flight_source(config.flight_controller)
         self.flight_status: FlightStatus | None = None
@@ -52,7 +55,10 @@ class SimulationRuntime:
 
         if state.time_s + 1e-9 >= self.next_telemetry_s:
             self.sequence += 1
-            sensor = self.sensors.read(env, state, self.config.failures)
+            sensor = self.sensors.read(
+                env, state, self.config.failures,
+                schema_version=self.config.telemetry_schema_version,
+            )
             row = self.encoder.encode(
                 self.sequence, round(state.time_s * 1000), sensor, self.flight_status
             )

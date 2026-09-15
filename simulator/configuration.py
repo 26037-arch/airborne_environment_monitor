@@ -26,6 +26,9 @@ class SimulationConfig:
     drag_coefficient: float = 0.8
     reference_area_m2: float = 0.03
     telemetry_interval_s: float = 1.0
+    telemetry_schema_version: int = 3
+    sea_level_pressure_hpa: float = 1013.25
+    simulation_epoch_unix: int = 1767225600
     random_seed: int = 12345
     noise: NoiseConfig = field(default_factory=NoiseConfig)
     wind: WindConfig = field(default_factory=WindConfig)
@@ -63,6 +66,12 @@ def load_config(path: Path) -> SimulationConfig:
         raise ValueError("payload mass는 양수, reference area는 0 이상이어야 합니다")
     if config.telemetry_interval_s <= 0:
         raise ValueError("telemetry interval은 양수여야 합니다")
+    if config.telemetry_schema_version not in {1, 2, 3}:
+        raise ValueError("telemetry_schema_version must be 1, 2, or 3")
+    if config.sea_level_pressure_hpa <= 0:
+        raise ValueError("sea_level_pressure_hpa must be positive")
+    if not 0 <= config.simulation_epoch_unix <= 0xFFFFFFFF:
+        raise ValueError("simulation_epoch_unix must fit uint32")
     if config.flight_controller.timeout_ms <= 0:
         raise ValueError("flight controller timeout은 양수여야 합니다")
     return config

@@ -79,6 +79,50 @@ class CsvParsingTests(unittest.TestCase):
         with self.assertRaises(InvalidRow):
             encode_csv_row(values, schema_version=2)
 
+    def test_v3_complete_and_missing_subsystems(self):
+        values = {
+            "seq": 42, "time_ms": 42000, "temperature_C": 19.2,
+            "humidity_pct": 55.0, "pressure_hPa": 980.0,
+            "barometric_altitude_m": 280.0, "latitude": 37.5,
+            "longitude": 127.0, "gps_altitude_m": 285.0,
+            "gps_speed_mps": 4.2, "gps_course_deg": 91.0,
+            "accel_x_mps2": 0.1, "accel_y_mps2": -0.2,
+            "accel_z_mps2": 9.7, "gyro_x_dps": 1.0,
+            "gyro_y_dps": 2.0, "gyro_z_dps": 3.0,
+            "rtc_unix_time": 1767225642, "env_ok": True, "imu_ok": True,
+            "gps_ok": True, "rtc_ok": True, "sd_ok": True,
+        }
+        complete = parse_csv_line(encode_csv_row(values, schema_version=3))
+        self.assertEqual(complete.schema_version, 3)
+        self.assertAlmostEqual(complete.barometric_altitude_m, 280.0)
+        self.assertTrue(complete.env_ok and complete.imu_ok and complete.rtc_ok)
+
+        for failed, fields in {
+            "gps_ok": ("latitude", "longitude", "gps_altitude_m", "gps_speed_mps", "gps_course_deg"),
+            "rtc_ok": ("rtc_unix_time",),
+            "imu_ok": ("accel_x_mps2", "accel_y_mps2", "accel_z_mps2", "gyro_x_dps", "gyro_y_dps", "gyro_z_dps"),
+            "env_ok": ("temperature_C", "humidity_pct", "pressure_hPa", "barometric_altitude_m"),
+        }.items():
+            missing = dict(values)
+            missing[failed] = False
+            for field in fields:
+                missing[field] = None
+            row = parse_csv_line(encode_csv_row(missing, schema_version=3))
+            self.assertFalse(getattr(row, failed))
+
+    def test_v3_invalid_float_and_health_flag_are_rejected(self):
+        valid_missing = {
+            "seq": 1, "time_ms": 0, "env_ok": False, "imu_ok": False,
+            "gps_ok": False, "rtc_ok": False, "sd_ok": True,
+        }
+        line = encode_csv_row(valid_missing, schema_version=3)
+        with self.assertRaises(InvalidRow):
+            parse_csv_line(line.replace("NA", "nan", 1))
+        fields = line.split(",")
+        fields[-5] = "2"
+        with self.assertRaises(InvalidRow):
+            parse_csv_line(",".join(fields))
+
 
 class SequenceTrackerTests(unittest.TestCase):
     def test_packet_loss(self):
