@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data_model import InvalidRow, SequenceTracker, parse_csv_line
+from shared.telemetry_schema import encode_csv_row
 
 
 VALID = (
@@ -35,6 +36,49 @@ class CsvParsingTests(unittest.TestCase):
         with self.assertRaises(InvalidRow):
             parse_csv_line(VALID[:-1] + "9")
 
+    def test_v2_flight_fields_and_v1_compatibility(self):
+        v1 = parse_csv_line(VALID)
+        self.assertEqual(v1.schema_version, 1)
+        self.assertIsNone(v1.flight_link_ok)
+        values = {
+            "seq": 153, "time_ms": 153000, "temperature_C": 18.4,
+            "humidity_pct": 55.3, "pressure_hPa": 942.8,
+            "pm1_ugm3": 4.1, "pm25_ugm3": 7.2, "pm4_ugm3": 8.3,
+            "pm10_ugm3": 9.6, "latitude": 37.123456,
+            "longitude": 127.123456, "gps_altitude_m": 523.4,
+            "gps_speed_mps": 3.82, "gps_course_deg": 124.3,
+            "bme_ok": True, "sps_ok": True, "gps_ok": True, "sd_ok": True,
+            "estimated_altitude_m": 520.0, "vertical_speed_mps": -1.2,
+            "roll_deg": 2.0, "pitch_deg": -3.0, "yaw_deg": 124.3,
+            "battery_voltage_V": 11.8, "battery_current_A": 1.4,
+            "flight_mode": 4, "armed": True, "flight_link_ok": True,
+            "system_health": 31,
+        }
+        v2 = parse_csv_line(encode_csv_row(values, schema_version=2))
+        self.assertEqual(v2.schema_version, 2)
+        self.assertAlmostEqual(v2.vertical_speed_mps, -1.2)
+        self.assertTrue(v2.armed)
+        self.assertTrue(v2.flight_link_ok)
+
+    def test_v2_missing_flight_controller_is_valid(self):
+        values = {
+            "seq": 1, "time_ms": 1000, "bme_ok": False, "sps_ok": False,
+            "gps_ok": False, "sd_ok": True, "armed": False,
+            "flight_link_ok": False,
+        }
+        row = parse_csv_line(encode_csv_row(values, schema_version=2))
+        self.assertFalse(row.flight_link_ok)
+        self.assertIsNone(row.roll_deg)
+
+    def test_invalid_v2_attitude_is_rejected(self):
+        values = {
+            "seq": 1, "time_ms": 1000, "bme_ok": False, "sps_ok": False,
+            "gps_ok": False, "sd_ok": False, "roll_deg": 999.0,
+            "armed": False, "flight_link_ok": True,
+        }
+        with self.assertRaises(InvalidRow):
+            encode_csv_row(values, schema_version=2)
+
 
 class SequenceTrackerTests(unittest.TestCase):
     def test_packet_loss(self):
@@ -55,4 +99,3 @@ class SequenceTrackerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QProcess, QProcessEnvironment, QTimer
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSpinBox,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSpinBox,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -50,6 +50,9 @@ class MainWindow(QMainWindow):
         self.jitter = self._spin(0, 10000, 0); self.radio_range = self._spin(0, 1_000_000, 0)
         self.radio_range.setSpecialValueText("Unlimited")
         self.bme_fail = QCheckBox(); self.sps_fail = QCheckBox(); self.gps_fail = QCheckBox(); self.sd_fail = QCheckBox()
+        self.flight_mode = QComboBox(); self.flight_mode.addItems(["MOCK", "OFF", "MAVLINK"])
+        self.flight_endpoint = QLineEdit("udp:127.0.0.1:14550")
+        self.flight_timeout = QSpinBox(); self.flight_timeout.setRange(100, 60000); self.flight_timeout.setValue(3000)
         for label, widget in (
             ("Initial altitude (m)", self.altitude), ("Velocity east (m/s)", self.v_east),
             ("Velocity north (m/s)", self.v_north), ("Velocity vertical (m/s)", self.v_vertical),
@@ -61,6 +64,9 @@ class MainWindow(QMainWindow):
             ("Radio max range (m)", self.radio_range),
             ("BME failure", self.bme_fail), ("SPS failure", self.sps_fail),
             ("GPS dropout", self.gps_fail), ("SD failure", self.sd_fail),
+            ("Flight source", self.flight_mode),
+            ("MAVLink endpoint", self.flight_endpoint),
+            ("Flight timeout (ms)", self.flight_timeout),
         ):
             form.addRow(label, widget)
         left.addWidget(initial)
@@ -100,6 +106,12 @@ class MainWindow(QMainWindow):
                       "latency_ms": self.latency.value(), "jitter_ms": self.jitter.value(),
                       "maximum_range_m": None if self.radio_range.value() == 0 else self.radio_range.value(),
                       "random_seed": seed},
+            "flight_controller": {
+                "mode": self.flight_mode.currentText(),
+                "endpoint": self.flight_endpoint.text().strip(),
+                "baud_rate": 115200,
+                "timeout_ms": self.flight_timeout.value(),
+            },
         })
         return values
 
@@ -151,12 +163,18 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 1, QTableWidgetItem("N/A" if earth is None else f"{earth:.3f}" if isinstance(earth, (int, float)) else str(earth)))
             self.table.setItem(row, 2, QTableWidgetItem("N/A" if measured is None else f"{measured:.3f}" if isinstance(measured, (int, float)) else str(measured)))
         radio = data.get("radio", {})
+        flight = data.get("flight")
+        flight_text = "OFF" if flight is None else (
+            f"connected={flight['connected']} armed={flight['armed']} "
+            f"mode={flight['flight_mode']} battery={flight['battery_voltage_v']} V"
+        )
         self.vector_label.setText(
             f"→ TRUE WIND [cyan]: {true['wind_enu_mps']}\n"
             f"→ PAYLOAD GROUND VELOCITY [yellow]: {ground}\n"
             f"→ RELATIVE AIR VELOCITY [magenta]: {true['relative_air_velocity_enu_mps']}\n"
             f"RADIO delivered/dropped/pending: {radio.get('delivered', 0)}/"
-            f"{radio.get('dropped', 0)}/{radio.get('pending', 0)}"
+            f"{radio.get('dropped', 0)}/{radio.get('pending', 0)}\n"
+            f"FLIGHT CONTROLLER: {flight_text}"
         )
         mapping = {"Altitude": (true["altitude_m"], "Altitude (m)"), "Temperature": (true["temperature_C"], "Temperature (°C)"), "Pressure": (true["pressure_hPa"], "Pressure (hPa)"), "Humidity": (true["humidity_pct"], "RH (%)"), "PM2.5": (true["pm25_ugm3"], "PM2.5 (µg/m³)"), "PM10": (true["pm10_ugm3"], "PM10 (µg/m³)")}
         self.graph_time = float(data.get("time_s", self.graph_time + 0.5))

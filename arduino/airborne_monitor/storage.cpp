@@ -34,7 +34,7 @@ static bool startNewLog() {
   if (!file) {
     return false;
   }
-  const size_t headerLength = file.println(F(CSV_HEADER_TEXT));
+  const size_t headerLength = file.println(F(ACTIVE_CSV_HEADER_TEXT));
   file.flush();
   file.close();
   return headerLength > 0;
@@ -96,4 +96,3 @@ bool appendStorageRow(const char* row, HealthState& health, uint32_t nowMs) {
 }
 
 const char* storageFilename() { return filename; }
-

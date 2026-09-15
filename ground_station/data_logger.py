@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import csv
 from datetime import date
 from pathlib import Path
 from typing import TextIO
 
-from data_model import CSV_HEADER, Measurement
+from data_model import CSV_HEADER_V1, Measurement
 
 
 class DataLogger:
@@ -16,8 +15,9 @@ class DataLogger:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.path = self._next_path(today or date.today())
         self._file: TextIO = self.path.open("x", encoding="utf-8", newline="")
-        self._writer = csv.writer(self._file, lineterminator="\n")
-        self._writer.writerow(CSV_HEADER)
+        self._fieldnames: tuple[str, ...] = CSV_HEADER_V1
+        self._has_rows = False
+        self._file.write(",".join(self._fieldnames) + "\n")
         self._file.flush()
 
     def _next_path(self, day: date) -> Path:
@@ -29,9 +29,17 @@ class DataLogger:
         raise RuntimeError("하루에 만들 수 있는 로그 파일 999개를 초과했습니다")
 
     def write(self, measurement: Measurement) -> None:
+        if not self._has_rows and self._fieldnames != measurement.fieldnames:
+            self._fieldnames = measurement.fieldnames
+            self._file.seek(0)
+            self._file.truncate()
+            self._file.write(",".join(self._fieldnames) + "\n")
+        elif self._fieldnames != measurement.fieldnames:
+            raise ValueError("한 PC CSV 파일에서 telemetry schema version이 변경되었습니다")
         # raw_line을 사용해 Arduino가 보낸 숫자 문자열을 그대로 보존합니다.
         self._file.write(measurement.raw_line + "\n")
         self._file.flush()
+        self._has_rows = True
 
     def close(self) -> None:
         if not self._file.closed:
@@ -43,4 +51,3 @@ class DataLogger:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
-

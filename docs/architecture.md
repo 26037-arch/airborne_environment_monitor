@@ -1,6 +1,28 @@
-# 설계 분석과 최종 architecture
+# 설계 분석과 확장 architecture
 
 이 문서는 코드를 작성하기 전에 요구사항을 모듈과 실패 경계로 바꾼 설계 기록입니다.
+
+기존 모듈의 입력/출력/수정 여부 표는 [architecture_analysis.md](architecture_analysis.md)에 있다.
+
+## 확장된 system boundary
+
+```text
+GNSS + compass + IMU + FC barometer
+                │
+                ▼
+        PX4 / ArduPilot SITL or hardware
+      state estimation + flight controller
+                │ MAVLink state (read only)
+                ▼
+       NEW flight adapter / FlightStatus
+                │
+BME280 + SPS30 ─┼─→ unified telemetry v2 → microSD + XBee
+                │                              │
+        existing Measurement                  ▼
+                                         Ground Station
+```
+
+Arduino에는 자세 안정화, actuator 계산, arming command, motor PWM을 추가하지 않는다.
 
 ## 1. 최종 architecture
 
@@ -12,7 +34,7 @@
 | Sensors | `sensors.*`, `measurement.h` | BME280/SPS30/GNSS 초기화, GNSS 연속 parsing, snapshot 채우기 |
 | Health | `health.*` | 장치별 상태와 마지막 성공 시각 |
 | Scheduler | `scheduler.*` | `millis()` 기반 1 Hz 실행, wrap-safe 시간 비교 |
-| Telemetry | `telemetry.*` | 18열 CSV를 고정 buffer에 한 번 생성, Serial3 전송 |
+| Telemetry | `telemetry.*` | v1 18열/v2 29열 CSV를 고정 buffer에 한 번 생성, Serial3 전송 |
 | Storage | `storage.*` | 새 8.3 파일명 선택, header/row 기록, 실패 후 유한 재시도 |
 
 PC는 GUI thread와 수신 thread를 `queue.Queue`로 분리합니다. 수신 thread는 serial I/O와 재연결만 맡고, GUI thread가 검증된 measurement를 logger, packet tracker, 화면과 그래프에 보냅니다. MockReceiver도 SerialReceiver와 같은 event를 만들므로 GUI와 logger 코드는 공유됩니다.
@@ -28,30 +50,71 @@ explicit user override ────┘                              │
                                                          │
                             ┌────────────────────────────┴──────────┐
                             ▼                                       ▼
-                        truth.csv                     Arduino 18-column telemetry
+                        truth.csv                     Arduino v1/v2 telemetry
                                                                     │
                            Webots Emitter → Receiver → SimulationSource
                                                                     │
                                                    existing Ground Station
 ```
 
+Flight source가 켜지면 sensor output과 `FlightStatus`를 composition하여 v2를 만들며, 꺼지면 같은 encoder가 v1을 만든다.
+
+```text
+EarthEnvironment
+       ↓
+Webots physics
+       ↓
+virtual sensors
+       ↓
+PX4 / ArduPilot adapter
+       ↓
+virtual actuator boundary
+       ↓
+vehicle state
+       │
+       └──────────────┐
+                      ↓
+BME280/SPS30 simulation
+                      ↓
+existing telemetry v1 / extended v2
+                      ↓
+Ground Station
+```
+
+현재 구현은 MAVLink state를 비동기로 읽는 boundary까지이며 actuator closed loop는 특정 PX4/ArduPilot Webots vehicle integration을 선택한 뒤 검증해야 한다. 환경 facade를 그 과정에서 다시 구현하지 않는다.
+
+## UNCHANGED CORE
+
+- `EarthEnvironment`, ERA5/CAMS loader, COESA 1976 standard atmosphere, wind model
+- BME280/SPS30 sensor model과 Arduino sensor sampling/warm-up
+- v1 18열 schema, XBee transparent framing, microSD row reuse
+- `SimulationSource` / `SerialSource` / `CSVReplaySource` 인터페이스
+- receiver thread→`queue.Queue`→GUI 구조와 sequence loss tracker
+
+## NEW ADAPTER LAYER
+
+- Arduino `FlightStatus`와 `flight_link.*` MAVLink read-only decoder
+- Python `FlightStatus`, `FlightTelemetrySource`, mock/MAVLink/null source
+- v2 29열 encoder/parser와 Ground Station Flight/System 표시
+- simulator flight source config와 runtime composition point
+
 ## 2. Arduino와 PC 간 data flow
 
 ```text
-loop마다 Serial2 bytes → TinyGPSPlus parser
+loop마다 Serial2 bytes → TinyGPSPlus 또는 MAVLink parser
                          │
-1 Hz scheduler ──────────┼─→ 한 시점의 Measurement snapshot
+1 Hz scheduler ──────────┼─→ Measurement + optional FlightStatus
 BME280 read ─────────────┤
 SPS30 read/warm-up ──────┘
                          │
                          ▼
-             fixed char[256] CSV row 1회 생성
+             fixed char[384] CSV row 1회 생성
                     ┌────┴────┐
                     ▼         ▼
              microSD append   Serial3 → XBee transparent radio
                                          │
                                          ▼
-Windows COM → 수신 thread → 18열/자료형 검증 → GUI queue
+Windows COM → 수신 thread → v1/v2 자료형 검증 → GUI queue
                                                ├─ PC CSV + flush
                                                ├─ sequence loss tracker
                                                ├─ current values/status

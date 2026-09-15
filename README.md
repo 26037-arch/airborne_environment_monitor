@@ -1,10 +1,10 @@
-# Arduino Mega 2560 공중 환경 측정 시스템
+# Airborne Environment Monitoring Payload + Flight Controller Interface
 
-BME280, SPS30, GNSS 측정값을 Arduino Mega 2560에서 같은 CSV 행으로 만들어 microSD와 XBee Transparent Mode에 동시에 보내고, Windows PC에서 저장·상태 표시·실시간 그래프를 제공하는 교육용 프로젝트입니다. 발사, 점화, 분리, 낙하산, 서보 등 기계 제어 기능은 포함하지 않습니다.
+BME280/SPS30 환경 측정 payload를 PX4 또는 ArduPilot의 flight state와 결합하고, microSD와 XBee Transparent Mode로 Ground Station에 보내는 프로젝트입니다. 환경 측정과 flight control은 분리되어 있습니다. Arduino는 안정화 알고리즘, arming, ESC/실제 motor 제어를 담당하지 않습니다.
 
-처음 검토할 때는 [architecture.md](docs/architecture.md), 배선할 때는 [wiring.md](docs/wiring.md), 문제가 생기면 [troubleshooting.md](docs/troubleshooting.md)를 보세요.
+처음 검토할 때는 [architecture.md](docs/architecture.md)와 [기존 architecture 분석표](docs/architecture_analysis.md), Flight Controller를 연결할 때는 [flight_controller.md](docs/flight_controller.md), 배선할 때는 [wiring.md](docs/wiring.md)를 보세요.
 
-Webots에서 초기 고도부터 하강·이동하며 같은 telemetry를 생성하려면 [simulator/README.md](simulator/README.md)를 보세요. 시뮬레이터, 실제 Arduino, 기록 CSV는 `shared/`의 동일한 18열 schema/parser를 사용하므로 지상국을 다시 작성할 필요가 없습니다.
+Webots에서 초기 고도부터 하강·이동하며 telemetry를 생성하려면 [simulator/README.md](simulator/README.md)를 보세요. `shared/` parser는 기존 18열 v1과 flight state가 붙은 29열 v2를 자동 판별하므로 과거 CSV와 Ground Station을 계속 사용할 수 있습니다.
 
 ## 가장 빠른 시작: 하드웨어 없이 확인
 
@@ -73,7 +73,9 @@ Arduino IDE 2.x의 Library Manager에서 다음 이름으로 설치합니다.
 | `SD_CS_PIN` | 4 | SD 모듈 CS 핀 |
 | `SERIAL_BAUD_DEBUG` | 115200 | USB Serial Monitor |
 | `SERIAL_BAUD_SPS30` | 115200 | Serial1 |
-| `SERIAL_BAUD_GNSS` | 9600 | Serial2; GNSS 설정과 맞출 것 |
+| `SERIAL_BAUD_GNSS` | 9600 | direct GNSS mode의 Serial2 |
+| `SERIAL_BAUD_FLIGHT_CONTROLLER` | 115200 | Flight Controller mode의 Serial2 |
+| `POSITION_SOURCE` | direct GNSS | 기존 GNSS 또는 MAVLink source 선택 |
 | `SERIAL_BAUD_XBEE` | 115200 | Serial3와 두 XBee의 UART baud |
 | `MOCK_SENSORS` | 0 | 1이면 센서 대신 Arduino 가상값 |
 
@@ -123,7 +125,7 @@ python main.py --list-ports
 
 ## 7. 화면에서 보이는 것
 
-왼쪽에는 현재 sequence, runtime, 온도, 습도, 기압, PM1/2.5/4/10, 위치, GNSS 고도, 지상속도, 네 장치 상태, 수신/손실 packet 수가 표시됩니다. 오른쪽 dropdown에서 고도·온도·기압·PM2.5·PM10·지상속도 그래프를 선택할 수 있습니다. 메모리와 redraw 비용을 제한하기 위해 최근 120점만 그리지만 CSV에는 모든 유효 행을 즉시 기록합니다.
+왼쪽은 Environment, Flight, System panel로 나뉩니다. v2에서는 자세, 추정 고도, 수직속도, battery, armed/mode, Flight Controller link를 함께 표시하고 v1에서는 해당 항목을 `N/A`로 표시합니다. 오른쪽 graph와 최근 120점 제한, 전체 유효 CSV 즉시 기록은 그대로입니다.
 
 `gps_speed_mps`는 **GNSS ground speed**이며 실제 풍속이 아닙니다.
 
@@ -150,13 +152,15 @@ python -m unittest discover -s tests -v
 
 테스트 범위는 정상/비정상 CSV parsing, `NA`, 열 수, 상태 flag, packet loss, sequence reset, 덮어쓰기 방지 logger, mock 변화입니다.
 
+추가 테스트는 v1/v2 호환, FlightStatus MAVLink message mapping, timeout, invalid attitude 거부, missing Flight Controller, mock FC→v2→Ground Station parser integration을 포함합니다.
+
 Arduino CLI가 설치된 PC에서는 라이브러리를 설치한 뒤 다음처럼 실제 컴파일 검증을 할 수 있습니다.
 
 ```powershell
 arduino-cli compile --fqbn arduino:avr:mega arduino/airborne_monitor
 ```
 
-현재 소스의 CSV formatter는 센서 객체와 분리된 순수 함수 `formatCsvRow()`이며, 고정 256-byte 버퍼 밖에 쓰지 않으면 `false`를 반환합니다.
+현재 소스의 CSV formatter는 센서 객체와 분리된 순수 함수이며, 고정 384-byte buffer 밖에 쓰지 않으면 `false`를 반환합니다. Direct GNSS mode는 `formatCsvRow()` v1, Flight Controller mode는 `formatCsvRowV2()`를 사용합니다.
 
 ## 10. 파일 안내
 
@@ -166,6 +170,8 @@ airborne_environment_monitor/
 ├─ docs/
 │  ├─ architecture.md
 │  ├─ wiring.md
+│  ├─ flight_controller.md
+│  ├─ architecture_analysis.md
 │  ├─ data_format.md
 │  ├─ troubleshooting.md
 │  ├─ example_screen.md
@@ -174,6 +180,8 @@ airborne_environment_monitor/
 │  ├─ airborne_monitor.ino
 │  ├─ config.h
 │  ├─ measurement.h
+│  ├─ flight_status.h
+│  ├─ flight_link.h/.cpp
 │  ├─ sensors.h/.cpp
 │  ├─ telemetry.h/.cpp
 │  ├─ storage.h/.cpp
@@ -195,10 +203,12 @@ airborne_environment_monitor/
 ├─ shared/
 │  ├─ telemetry_schema.py
 │  ├─ telemetry_sources.py
+│  ├─ flight_status.py
 │  └─ data_types.py
 ├─ simulator/
 │  ├─ README.md
 │  ├─ environment/
+│  ├─ flight/
 │  ├─ sensors/
 │  ├─ telemetry/
 │  ├─ gui/
@@ -206,5 +216,22 @@ airborne_environment_monitor/
 │  ├─ tools/
 │  ├─ data/
 │  └─ tests/
-└─ examples/example_flight.csv
+└─ examples/example_flight.csv, example_flight_v2.csv
 ```
+
+## UNCHANGED CORE
+
+- BME280 측정, SPS30 warm-up/측정, direct GNSS mode
+- microSD CSV append와 XBee transparent telemetry
+- 기존 18열 v1 schema와 CSV replay
+- Ground Station receiver thread/`queue.Queue`, sequence loss tracker
+- `EarthEnvironment`, ERA5, CAMS, COESA 1976, wind와 sensor simulation
+
+## NEW ADAPTER LAYER
+
+- Arduino의 fixed-size `FlightStatus`와 optional MAVLink `flight_link`
+- Python mock/null/MAVLink flight telemetry source
+- 기존 18열 뒤에 flight state를 붙인 29열 v2
+- Ground Station Flight/System panel과 simulator runtime composition
+
+PX4/ArduPilot, MAVLink, pymavlink를 검증된 외부 component로 사용하며 flight-control engine 자체를 저장소 안에서 다시 구현하지 않습니다. 현재 실제 hardware와 SITL/Webots actuator closed loop 검증 범위는 [flight_controller.md](docs/flight_controller.md)에 명시되어 있습니다.

@@ -1,4 +1,5 @@
 #include "config.h"
+#include "flight_link.h"
 #include "health.h"
 #include "measurement.h"
 #include "scheduler.h"
@@ -18,6 +19,7 @@ void setup() {
 
   const uint32_t nowMs = millis();
   initializeSensors(health, nowMs);
+  initializeFlightLink(nowMs);
   initializeStorage(health, nowMs);
   initializeScheduler(scheduler, nowMs);
 
@@ -26,10 +28,12 @@ void setup() {
 }
 
 void loop() {
+  const uint32_t nowMs = millis();
   // GNSS 문자는 샘플링 시점과 무관하게 매 loop에서 계속 파싱합니다.
   pollGnss();
+  pollFlightLink(nowMs);
+  serviceFlightLink(nowMs);
 
-  const uint32_t nowMs = millis();
   serviceSensors(health, nowMs);
   serviceStorage(health, nowMs);
 
@@ -41,10 +45,14 @@ void loop() {
   ++sequenceNumber;
   clearMeasurement(measurement, sequenceNumber, nowMs);
   sampleSensors(measurement, health, nowMs);
+  applyFlightStatusToMeasurement(measurement, health, nowMs);
   measurement.sdOk = storageIsReady();
 
   // 이 행을 단 한 번 만든 다음 SD와 XBee 양쪽에 같은 버퍼를 전달합니다.
-  if (!formatCsvRow(measurement, csvRow, sizeof(csvRow))) {
+  const bool formatted = flightControllerPositionEnabled()
+      ? formatCsvRowV2(measurement, currentFlightStatus(), csvRow, sizeof(csvRow))
+      : formatCsvRow(measurement, csvRow, sizeof(csvRow));
+  if (!formatted) {
     Serial.println(F("ERROR: CSV row buffer too small"));
     return;
   }

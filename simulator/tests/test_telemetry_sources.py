@@ -3,7 +3,7 @@ import unittest
 import uuid
 from pathlib import Path
 
-from shared.telemetry_schema import CSV_HEADER
+from shared.telemetry_schema import CSV_HEADER, CSV_HEADER_V2, encode_csv_row
 from shared.telemetry_sources import CSVReplaySource, TelemetrySource
 
 
@@ -35,6 +35,23 @@ class TelemetrySourceTests(unittest.TestCase):
         path.write_text("seq,time_ms\n1,0\n", encoding="utf-8")
         with self.assertRaises(ValueError):
             CSVReplaySource(path, realtime=False)
+
+    def test_v2_replay_is_accepted(self):
+        path = self.directory / "flight_v2.csv"
+        values = {
+            "seq": 1, "time_ms": 0, "bme_ok": False, "sps_ok": False,
+            "gps_ok": False, "sd_ok": True, "armed": False,
+            "flight_link_ok": False,
+        }
+        path.write_text(
+            ",".join(CSV_HEADER_V2) + "\n" +
+            encode_csv_row(values, schema_version=2) + "\n", encoding="utf-8"
+        )
+        source = CSVReplaySource(path, realtime=False)
+        try:
+            self.assertEqual(source.read().schema_version, 2)
+        finally:
+            source.close()
 
 
 if __name__ == "__main__":

@@ -46,6 +46,11 @@
     "maximum_range_m": null,
     "random_seed": 12345
   },
+  "flight_controller": {
+    "mode": "MOCK",
+    "endpoint": "udp:127.0.0.1:14550",
+    "baud_rate": 115200,
+    "timeout_ms": 3000
+  },
   "custom_environment": {}
 }
-

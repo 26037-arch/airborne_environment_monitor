@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 
 from shared.data_types import EnvironmentSample, PayloadState, SensorReadings
-from shared.telemetry_schema import CSV_HEADER, parse_csv_line
+from shared.telemetry_schema import CSV_HEADER_V1, parse_csv_line
 
 
 TRUTH_HEADER = (
@@ -27,7 +27,9 @@ class RunLogger:
         self.truth_path = self.directory / "truth.csv"
         self.telemetry_file = self.telemetry_path.open("w", encoding="utf-8", newline="")
         self.truth_file = self.truth_path.open("w", encoding="utf-8", newline="")
-        csv.writer(self.telemetry_file, lineterminator="\n").writerow(CSV_HEADER)
+        self.telemetry_header: tuple[str, ...] = CSV_HEADER_V1
+        self.telemetry_has_rows = False
+        csv.writer(self.telemetry_file, lineterminator="\n").writerow(CSV_HEADER_V1)
         self.truth_writer = csv.writer(self.truth_file, lineterminator="\n")
         self.truth_writer.writerow(TRUTH_HEADER)
 
@@ -37,8 +39,18 @@ class RunLogger:
 
     def write(self, row: str, state: PayloadState, environment: EnvironmentSample,
               relative_air: tuple[float, float, float]) -> None:
-        parse_csv_line(row)
+        measurement = parse_csv_line(row)
+        if not self.telemetry_has_rows and self.telemetry_header != measurement.fieldnames:
+            self.telemetry_header = measurement.fieldnames
+            self.telemetry_file.seek(0)
+            self.telemetry_file.truncate()
+            csv.writer(self.telemetry_file, lineterminator="\n").writerow(
+                self.telemetry_header
+            )
+        elif self.telemetry_header != measurement.fieldnames:
+            raise ValueError("simulation 도중 telemetry schema version이 변경되었습니다")
         self.telemetry_file.write(row + "\n")
+        self.telemetry_has_rows = True
         east, north, vertical = state.velocity_ground_mps
         self.truth_writer.writerow((
             round(state.time_s * 1000), *state.position_m, state.altitude_m,
@@ -96,4 +108,3 @@ def create_error_report(run_directory: Path) -> dict[str, object]:
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return report
-

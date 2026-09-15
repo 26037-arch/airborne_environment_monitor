@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from .telemetry_schema import CSV_HEADER, Measurement, parse_csv_line
+from .telemetry_schema import CSV_HEADER_V1, CSV_HEADER_V2, Measurement, parse_csv_line
 
 
 class TelemetrySource(ABC):
@@ -60,9 +60,10 @@ class CSVReplaySource(TelemetrySource):
     def __init__(self, path: Path, realtime: bool = True) -> None:
         self.file = Path(path).open(encoding="utf-8", newline="")
         self.reader = csv.DictReader(self.file)
-        if tuple(self.reader.fieldnames or ()) != CSV_HEADER:
+        self.header = tuple(self.reader.fieldnames or ())
+        if self.header not in {CSV_HEADER_V1, CSV_HEADER_V2}:
             self.file.close()
-            raise ValueError("CSV replay header가 Arduino schema와 다릅니다")
+            raise ValueError("CSV replay header가 telemetry schema v1/v2와 다릅니다")
         self.realtime = realtime
         self.previous_time_ms: Optional[int] = None
 
@@ -71,7 +72,7 @@ class CSVReplaySource(TelemetrySource):
             row = next(self.reader)
         except StopIteration:
             return None
-        line = ",".join(row[name] for name in CSV_HEADER)
+        line = ",".join(row[name] for name in self.header)
         measurement = parse_csv_line(line)
         if self.realtime and self.previous_time_ms is not None:
             delay = max(0.0, min(5.0, (measurement.time_ms - self.previous_time_ms) / 1000.0))
@@ -81,4 +82,3 @@ class CSVReplaySource(TelemetrySource):
 
     def close(self) -> None:
         self.file.close()
-

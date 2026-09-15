@@ -1,0 +1,2 @@
+seq,time_ms,temperature_C,humidity_pct,pressure_hPa,pm1_ugm3,pm25_ugm3,pm4_ugm3,pm10_ugm3,latitude,longitude,gps_altitude_m,gps_speed_mps,gps_course_deg,bme_ok,sps_ok,gps_ok,sd_ok,estimated_altitude_m,vertical_speed_mps,roll_deg,pitch_deg,yaw_deg,battery_voltage_V,battery_current_A,flight_mode,armed,flight_link_ok,system_health
+152,152000,18.42,55.30,942.83,4.10,7.20,8.30,9.60,37.123456,127.123456,523.40,3.82,124.30,1,1,1,1,520.10,-1.20,2.00,-3.00,124.30,11.80,1.40,4,1,1,31

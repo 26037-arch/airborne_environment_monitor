@@ -8,7 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data_logger import DataLogger
-from data_model import CSV_HEADER
+from data_model import CSV_HEADER, CSV_HEADER_V2
+from shared.telemetry_schema import encode_csv_row, parse_csv_line
 from mock_data import MockDataGenerator
 
 
@@ -45,6 +46,22 @@ class DataLoggerTests(unittest.TestCase):
         second = DataLogger(self.directory, today=date(2026, 9, 15))
         second.close()
         self.assertNotEqual(first.path, second.path)
+
+    def test_logger_selects_v2_header_from_first_record(self):
+        values = {
+            "seq": 1, "time_ms": 0, "bme_ok": False, "sps_ok": False,
+            "gps_ok": False, "sd_ok": True, "armed": False,
+            "flight_link_ok": False,
+        }
+        measurement = parse_csv_line(encode_csv_row(values, schema_version=2))
+        logger = DataLogger(self.directory, today=date(2026, 9, 15))
+        path = logger.path
+        logger.write(measurement)
+        logger.close()
+        with path.open(encoding="utf-8", newline="") as file:
+            rows = list(csv.reader(file))
+        self.assertEqual(tuple(rows[0]), CSV_HEADER_V2)
+        self.assertEqual(len(rows[1]), len(CSV_HEADER_V2))
 
 
 class MockGeneratorTests(unittest.TestCase):

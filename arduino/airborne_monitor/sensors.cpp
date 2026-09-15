@@ -7,12 +7,16 @@
 #if !MOCK_SENSORS
 #include <Adafruit_BME280.h>
 #include <SensirionUartSps30.h>
+#if POSITION_SOURCE == POSITION_SOURCE_DIRECT_GNSS
 #include <TinyGPS++.h>
+#endif
 #include <Wire.h>
 
 static Adafruit_BME280 bme;
 static SensirionUartSps30 sps30;
+#if POSITION_SOURCE == POSITION_SOURCE_DIRECT_GNSS
 static TinyGPSPlus gps;
+#endif
 #endif
 
 static bool bmeInitialized = false;
@@ -82,7 +86,9 @@ void initializeSensors(HealthState& health, uint32_t nowMs) {
 #else
   Wire.begin();
   Serial1.begin(SERIAL_BAUD_SPS30);
+#if POSITION_SOURCE == POSITION_SOURCE_DIRECT_GNSS
   Serial2.begin(SERIAL_BAUD_GNSS);
+#endif
 
   lastBmeAttemptMs = nowMs;
   bmeInitialized = tryInitializeBme();
@@ -98,7 +104,7 @@ void initializeSensors(HealthState& health, uint32_t nowMs) {
 }
 
 void pollGnss() {
-#if !MOCK_SENSORS
+#if !MOCK_SENSORS && POSITION_SOURCE == POSITION_SOURCE_DIRECT_GNSS
   while (Serial2.available() > 0) {
     gps.encode(static_cast<char>(Serial2.read()));
   }
@@ -208,6 +214,7 @@ void sampleSensors(Measurement& m, HealthState& health, uint32_t nowMs) {
     }
   }
 
+#if POSITION_SOURCE == POSITION_SOURCE_DIRECT_GNSS
   const bool gpsFresh = gps.location.isValid() && gps.altitude.isValid() &&
                         gps.speed.isValid() && gps.course.isValid() &&
                         gps.location.age() <= GPS_MAX_AGE_MS &&
@@ -238,6 +245,7 @@ void sampleSensors(Measurement& m, HealthState& health, uint32_t nowMs) {
   } else {
     health.gpsOk = false;
   }
+#endif
 #endif
 
   m.bmeOk = health.bmeOk;

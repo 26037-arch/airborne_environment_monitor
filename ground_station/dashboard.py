@@ -70,10 +70,16 @@ class Dashboard:
 
         body = ttk.Frame(self.root, padding=(10, 0, 10, 10))
         body.pack(fill="both", expand=True)
-        metrics = ttk.LabelFrame(body, text="Current measurement", padding=10)
-        metrics.pack(side="left", fill="y", padx=(0, 10))
+        metrics_column = ttk.Frame(body)
+        metrics_column.pack(side="left", fill="y", padx=(0, 10))
+        environment = ttk.LabelFrame(metrics_column, text="Environment", padding=10)
+        environment.pack(fill="x")
+        flight = ttk.LabelFrame(metrics_column, text="Flight", padding=10)
+        flight.pack(fill="x", pady=(8, 0))
+        system = ttk.LabelFrame(metrics_column, text="System", padding=10)
+        system.pack(fill="x", pady=(8, 0))
 
-        rows = [
+        environment_rows = [
             ("Sequence", "seq"),
             ("Runtime", "runtime"),
             ("Temperature", "temperature_C"),
@@ -83,22 +89,36 @@ class Dashboard:
             ("PM2.5", "pm25_ugm3"),
             ("PM4.0", "pm4_ugm3"),
             ("PM10", "pm10_ugm3"),
+        ]
+        flight_rows = [
             ("Latitude", "latitude"),
             ("Longitude", "longitude"),
             ("GPS altitude", "gps_altitude_m"),
+            ("Estimated altitude", "estimated_altitude_m"),
             ("Ground speed", "gps_speed_mps"),
+            ("Vertical speed", "vertical_speed_mps"),
+            ("Roll / Pitch / Yaw", "attitude"),
+        ]
+        system_rows = [
             ("BME / SPS / GPS / SD", "health"),
+            ("Flight controller", "flight_link"),
+            ("Battery", "battery"),
+            ("Armed / mode", "armed_mode"),
             ("Packets received", "received"),
             ("Packets lost", "lost"),
             ("Packet loss", "loss"),
         ]
-        for row_index, (caption, key) in enumerate(rows):
-            ttk.Label(metrics, text=caption).grid(
-                row=row_index, column=0, sticky="w", padx=(0, 14), pady=3
-            )
-            label = ttk.Label(metrics, text="-")
-            label.grid(row=row_index, column=1, sticky="e", pady=3)
-            self.value_labels[key] = label
+        for frame, rows in (
+            (environment, environment_rows), (flight, flight_rows),
+            (system, system_rows),
+        ):
+            for row_index, (caption, key) in enumerate(rows):
+                ttk.Label(frame, text=caption).grid(
+                    row=row_index, column=0, sticky="w", padx=(0, 14), pady=2
+                )
+                label = ttk.Label(frame, text="-")
+                label.grid(row=row_index, column=1, sticky="e", pady=2)
+                self.value_labels[key] = label
 
         plot_frame = ttk.LabelFrame(body, text="Recent data", padding=10)
         plot_frame.pack(side="left", fill="both", expand=True)
@@ -166,14 +186,36 @@ class Dashboard:
         self.value_labels["gps_altitude_m"].configure(
             text=self._number(m.gps_altitude_m, " m")
         )
+        self.value_labels["estimated_altitude_m"].configure(
+            text=self._number(m.estimated_altitude_m, " m")
+        )
         self.value_labels["gps_speed_mps"].configure(
             text=self._number(m.gps_speed_mps, " m/s")
         )
+        self.value_labels["vertical_speed_mps"].configure(
+            text=self._number(m.vertical_speed_mps, " m/s")
+        )
+        attitude = " / ".join(
+            self._number(value, "°", 1) for value in (m.roll_deg, m.pitch_deg, m.yaw_deg)
+        )
+        self.value_labels["attitude"].configure(text=attitude)
         health = " / ".join(
             "OK" if value else "FAIL"
             for value in (m.bme_ok, m.sps_ok, m.gps_ok, m.sd_ok)
         )
         self.value_labels["health"].configure(text=health)
+        flight_link = "N/A (schema v1)" if m.flight_link_ok is None else (
+            "CONNECTED" if m.flight_link_ok else "DISCONNECTED"
+        )
+        self.value_labels["flight_link"].configure(text=flight_link)
+        battery = " / ".join((
+            self._number(m.battery_voltage_V, " V"),
+            self._number(m.battery_current_A, " A"),
+        ))
+        self.value_labels["battery"].configure(text=battery)
+        armed = "N/A" if m.armed is None else ("ARMED" if m.armed else "DISARMED")
+        mode = "NA" if m.flight_mode is None else str(m.flight_mode)
+        self.value_labels["armed_mode"].configure(text=f"{armed} / {mode}")
 
         stats = self.tracker.stats
         self.value_labels["received"].configure(text=str(stats.received))
@@ -228,4 +270,3 @@ class Dashboard:
     def _close(self) -> None:
         self.on_close_callback()
         self.root.destroy()
-

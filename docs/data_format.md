@@ -1,4 +1,4 @@
-# Telemetry CSV 형식
+# Telemetry CSV 형식 (v1/v2)
 
 ## Header와 열 순서
 
@@ -47,6 +47,20 @@ SPS30 warm-up과 GNSS fix 없음의 예:
 
 PC parser는 정확히 18열인지, seq/time이 uint32인지, 숫자가 finite인지, flag가 0/1인지 확인합니다. 정상 flag가 1인데 해당 센서 값이 `NA`인 행도 버립니다.
 
+## v2 Flight Controller 확장
+
+v1의 18개 열은 앞부분에 순서와 의미를 그대로 유지한다. Flight Controller mode에서 다음 11개 열을 뒤에 붙인 29열 v2를 사용한다.
+
+```text
+estimated_altitude_m,vertical_speed_mps,roll_deg,pitch_deg,yaw_deg,battery_voltage_V,battery_current_A,flight_mode,armed,flight_link_ok,system_health
+```
+
+`armed`와 `flight_link_ok`는 항상 0/1이다. 연결되지 않았거나 아직 해당 MAVLink message를 받지 않은 수치는 `NA`다. `system_health`는 Flight Controller가 보고한 정수 status/bitmask이며 payload가 임의로 해석해 비행 제어에 사용하지 않는다.
+
+Parser는 열 수로 v1/v2를 자동 감지한다. CSV replay와 PC logger도 첫 record의 version에 맞는 header를 사용하므로 과거 v1 파일은 변환 없이 읽힌다. 한 파일 안에서 version이 바뀌는 것은 logger가 거부한다.
+
+완전한 예시는 `examples/example_flight_v2.csv`에 있다.
+
 ## Packet loss와 reset
 
 수신 seq가 `152,153,155`라면 154 한 개를 손실로 셉니다. seq가 직전 값보다 작아지면 Arduino 재부팅 또는 uint32 wrap으로 보고, 손실을 대량으로 만들지 않고 새 기준점으로 시작합니다. 같은 seq가 연속으로 오면 duplicate로 세지만 loss는 추가하지 않습니다.
@@ -60,4 +74,3 @@ lost / (valid rows received + lost) × 100
 ## 전송 framing
 
 XBee Transparent Mode에서 한 measurement는 ASCII CSV 한 줄과 newline(`\n`)입니다. JSON, binary frame, `DATA,` prefix는 쓰지 않습니다. 손상되거나 중간부터 수신한 행은 PC parser가 무시하고 다음 newline부터 다시 동기화합니다.
-

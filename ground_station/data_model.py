@@ -10,7 +10,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 기존 import 경로를 유지하는 compatibility facade입니다.
-from shared.telemetry_schema import CSV_HEADER, InvalidRow, Measurement, parse_csv_line
+from shared.telemetry_schema import (
+    CSV_HEADER, CSV_HEADER_V1, CSV_HEADER_V2, InvalidRow, Measurement,
+    parse_csv_line,
+)
 
 
 @dataclass
@@ -49,4 +52,3 @@ class SequenceTracker:
         self.stats.received += 1
         self.stats.last_seq = seq
         return missing_now
-

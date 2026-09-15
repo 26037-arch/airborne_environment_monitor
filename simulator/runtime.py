@@ -5,9 +5,11 @@ import math
 from pathlib import Path
 
 from shared.data_types import EnvironmentSample, PayloadState
+from shared.flight_status import FlightStatus
 
 from .configuration import SimulationConfig
 from .environment.earth_environment import EarthEnvironment
+from .flight.telemetry_source import FlightTelemetrySource, create_flight_source
 from .run_logging import RunLogger, create_error_report
 from .sensors.sensor_suite import SensorSuite
 from .telemetry.encoder import TelemetryEncoder
@@ -18,13 +20,16 @@ class SimulationRuntime:
     """Webots physics state를 환경→센서→telemetry pipeline에 연결합니다."""
 
     def __init__(self, config: SimulationConfig, data_root: Path,
-                 run_directory: Path) -> None:
+                 run_directory: Path,
+                 flight_source: FlightTelemetrySource | None = None) -> None:
         self.config = config
         from .environment.wind_model import WindModel
         self.environment = EarthEnvironment(data_root, WindModel(config.wind), config.custom_environment)
         self.sensors = SensorSuite(config.noise)
         self.encoder = TelemetryEncoder()
         self.radio = VirtualRadio(config.radio)
+        self.flight_source = flight_source or create_flight_source(config.flight_controller)
+        self.flight_status: FlightStatus | None = None
         self.logger = RunLogger(run_directory)
         self.run_directory = Path(run_directory)
         self.sequence = 0
@@ -32,6 +37,7 @@ class SimulationRuntime:
         self.provenance_written = False
 
     def step(self, state: PayloadState) -> tuple[tuple[float, float, float], list[str], EnvironmentSample]:
+        self.flight_status = self.flight_source.poll(round(state.time_s * 1000), state)
         env = self.environment.sample(
             self.config.latitude, self.config.longitude, self.config.month,
             max(0.0, state.altitude_m), state.time_s, self.config.atmosphere_mode,
@@ -47,7 +53,9 @@ class SimulationRuntime:
         if state.time_s + 1e-9 >= self.next_telemetry_s:
             self.sequence += 1
             sensor = self.sensors.read(env, state, self.config.failures)
-            row = self.encoder.encode(self.sequence, round(state.time_s * 1000), sensor)
+            row = self.encoder.encode(
+                self.sequence, round(state.time_s * 1000), sensor, self.flight_status
+            )
             self.logger.write(row, state, env, relative)
             if not self.provenance_written:
                 self.logger.write_provenance(env.provenance)
@@ -70,6 +78,7 @@ class SimulationRuntime:
                 "relative_air_velocity_enu_mps": relative,
             },
             "sensor": sensor.__dict__,
+            "flight": None if self.flight_status is None else self.flight_status.__dict__,
             "radio": self.radio.status,
         }
         (self.run_directory / "status.json").write_text(
@@ -77,5 +86,6 @@ class SimulationRuntime:
         )
 
     def close(self) -> dict[str, object]:
+        self.flight_source.close()
         self.logger.close()
         return create_error_report(self.run_directory)

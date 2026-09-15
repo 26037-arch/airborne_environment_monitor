@@ -2,7 +2,7 @@
 
 검증일: 2026-09-15
 
-## Arduino Mega 2560 실제 compile
+## Arduino Mega 2560 baseline compile
 
 공식 Arduino Library Manager index에서 다음 버전을 설치한 임시 Arduino CLI 환경으로 `arduino:avr:mega`를 실제 컴파일했습니다.
 
@@ -24,11 +24,13 @@ Sketch uses 35358 bytes (13%) of program storage space. Maximum is 253952 bytes.
 Global variables use 2164 bytes (26%) of dynamic memory, leaving 6028 bytes. Maximum is 8192 bytes.
 ```
 
-`MOCK_SENSORS=1` build도 성공했습니다. 최종 변경 후 두 mode를 다시 compile해 확인했습니다. 외부 library/core에서 발생한 warning을 제외하고 프로젝트 source의 compile error는 없습니다.
+`MOCK_SENSORS=1` build도 성공했습니다. 이 수치는 flight adapter 추가 전 baseline commit의 결과입니다.
+
+현재 작업 환경에는 `arduino-cli`가 설치되어 있지 않아 adapter 추가 후 Arduino build는 실행하지 못했습니다. 기본 direct-GNSS mode와 Flight Controller mode를 각각 compile해야 하며, 후자는 공식 MAVLink `c_library_v2` header가 추가로 필요합니다. Python 정적 test는 Arduino v1/v2 header 문자열이 공용 schema와 일치하는지 검사합니다.
 
 ## Python 검증
 
-Python source 전체 byte-compile과 다음 9개 unit test를 실행했습니다.
+Python source 전체 byte-compile과 Ground Station 13개, simulator 24개 unit/integration test를 실행했습니다.
 
 ```text
 CSV valid row parsing
@@ -40,9 +42,13 @@ sequence reset
 logger header/row
 logger no-overwrite naming
 mock row parse/change
+v1/v2 parser와 replay/logger compatibility
+MAVLink FlightStatus mapping과 invalid data 무시
+Flight Controller timeout/missing 상태
+mock FC → v2 telemetry → Ground Station parser
 ```
 
-결과: `Ran 9 tests ... OK`
+결과: Ground Station `Ran 13 tests ... OK`, simulator `Ran 24 tests ... OK`.
 
 `python main.py --mock --headless --duration 2.2`도 실행해 1초 간격 3개 measurement 생성, parser 통과, PC CSV 생성과 flush를 확인했습니다.
 
@@ -54,10 +60,10 @@ mock row parse/change
 - 1 Hz scheduler는 unsigned `millis()` subtraction 사용
 - 센서마다 invalid 값과 health flag가 독립적
 - SPS30 `WARMUP/READY/ERROR` 상태 및 조정 가능한 warm-up
-- 동적 문자열/JSON 없음; CSV buffer 256 bytes 고정
+- 동적 문자열/JSON 없음; CSV buffer 384 bytes 고정
 - 같은 `csvRow`를 SD append 후 XBee 전송
 - SD 파일 자동 증가, header 우선 기록, failure 후 telemetry 지속
-- Arduino와 Python header 모두 18열이며 순서 동일
+- Arduino/Python v1 18열과 v2 29열 header/순서 동일
 - PC invalid row 제외, seq gap/reset 처리, serial 재연결
 - GUI graph는 최근 N점만 유지, 전체 유효 데이터는 CSV flush
 - PC mock과 Arduino compile-time mock 제공
@@ -66,7 +72,7 @@ mock row parse/change
 
 ## Webots simulator 검증
 
-2026-09-15에 기존 지상국 9개 회귀 test와 simulator 18개 unit/integration test를 실행해 모두 통과했습니다. 검증 범위는 다음과 같습니다.
+2026-09-15에 Ground Station 13개와 simulator 24개 unit/integration test를 실행해 모두 통과했습니다. 검증 범위는 다음과 같습니다.
 
 - COESA 1976의 geometric altitude 0/1/5/10/20/32 km 기준 온도·압력·밀도; 허용 오차 0.05 K, 0.2%
 - ERA5 고도 보간, RH 범위, 증가하는 고도, 감소하는 압력, 범위 밖 무외삽
@@ -82,5 +88,7 @@ mock row parse/change
 - Scenario E: CAMS 미설치 시 PM `NA`, COESA fallback 지속
 - truth/telemetry/provenance/error report 파일 생성
 - Webots world의 ENU, 20 ms(50 Hz), 중력, payload, radio, trajectory, 세 vector asset 정적 검사
+- v1/v2 CSV replay, mock Flight Controller integration, MAVLink timeout
+- BME/SPS/SD failure 중에도 GNSS/telemetry가 계속되는 failure isolation
 
-테스트 fixture는 데이터 loader의 구조와 계산만 검증하며 실제 지구 자료가 아닙니다. 현재 검증 PC에는 Webots, PySide6, Matplotlib, xarray가 설치되지 않아 Webots GUI/물리 engine과 원본 NetCDF 전처리의 종단 실행은 수행하지 못했습니다. 실제 ERA5/CAMS Scenario B 지역 비교 역시 공식 파일을 준비한 환경에서 수행해야 합니다. 이 항목을 성공으로 가장하지 않습니다.
+테스트 fixture는 데이터 loader의 구조와 계산만 검증하며 실제 지구 자료가 아닙니다. 현재 검증 PC에는 Webots/PX4/ArduPilot SITL이 준비되지 않아 GUI/물리 engine, HIL sensor injection, virtual actuator closed loop는 종단 실행하지 못했습니다. 실제 ERA5/CAMS Scenario B 지역 비교와 Arduino/MAVLink hardware link도 해당 장비와 공식 자료가 있는 환경에서 수행해야 합니다. 이 항목을 성공으로 가장하지 않습니다.

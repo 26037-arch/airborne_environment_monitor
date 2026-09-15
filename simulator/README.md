@@ -1,6 +1,6 @@
 # Webots 공중 환경 계측 시뮬레이터
 
-이 모듈은 추진·발사를 모델링하지 않습니다. payload는 사용자가 지정한 고도와 속도에서 시작하고, Webots가 중력과 강체 운동을 계산합니다. 환경 엔진이 항력을 위한 공기 밀도와 바람을 제공하고, 센서 모델이 기존 Arduino와 같은 18열 CSV telemetry를 만듭니다.
+이 모듈은 추진·발사를 모델링하지 않습니다. payload는 사용자가 지정한 고도와 속도에서 시작하고, Webots가 중력과 강체 운동을 계산합니다. 환경 엔진이 항력을 위한 공기 밀도와 바람을 제공하고, 센서 모델은 기존 18열 v1 또는 Flight Controller state가 붙은 29열 v2 telemetry를 만듭니다.
 
 ## 데이터 의미
 
@@ -25,6 +25,8 @@ python -m pip install -r simulator/requirements.txt
 python simulator/main.py
 ```
 
+Control GUI의 `Flight source`는 `OFF`(v1), `MOCK`(adapter pipeline 시험용 v2), `MAVLINK`(PX4/ArduPilot state 수신) 중 선택합니다. MAVLink endpoint의 기본값은 `udp:127.0.0.1:14550`입니다. Mock은 flight-control algorithm이 아니라 환경/telemetry composition을 hardware 없이 검증하기 위한 source입니다.
+
 Control GUI에서 값을 정하고 **Start Webots**를 누릅니다. Webots 3D 창에는 payload, 주황색 이동 궤적, true wind(청록), ground velocity(노랑), relative-air velocity(자홍) 벡터가 표시됩니다. 별도 terminal에서 기존 지상국을 그대로 실행합니다.
 
 ```powershell
@@ -32,7 +34,7 @@ cd ground_station
 python main.py --simulation
 ```
 
-시뮬레이션이 보내는 UDP는 Webots `Emitter → Receiver`를 통과한 뒤 localhost `127.0.0.1:19000`으로 연결됩니다. 실제 Arduino는 `python main.py`, 기록 재생은 `python main.py --replay path\telemetry.csv`입니다. 세 입력은 모두 `shared/telemetry_schema.py`의 같은 parser를 사용합니다.
+시뮬레이션이 보내는 UDP는 Webots `Emitter → Receiver`를 통과한 뒤 localhost `127.0.0.1:19000`으로 연결됩니다. 실제 Arduino는 `python main.py`, 기록 재생은 `python main.py --replay path\telemetry.csv`입니다. 세 입력은 모두 `shared/telemetry_schema.py`의 v1/v2 parser를 사용합니다.
 
 ## 데이터 모드
 
@@ -99,6 +101,8 @@ BME280는 온도 ±0.5 °C, 습도 ±3 %RH, 압력 ±1 hPa를 ±3σ로 사용합
 - `provenance.json`: 사용 자료와 fallback/가정
 - `error_report.json`: bias, MAE, RMSE, 최대 절대오차, 유효 데이터 비율
 - `status.json`: UI가 읽는 최신 true/sensor/radio 상태
+
+MAVLink adapter는 physics loop에서 blocking하지 않도록 bounded non-blocking poll을 사용합니다. 이 저장소는 SITL state를 읽지만 arm/mode/motor command를 보내지 않습니다. HIL sensor injection과 virtual actuator→vehicle dynamics의 완전한 closed loop는 설치한 PX4/ArduPilot 및 공식 Webots vehicle integration에서 검증해야 하며, 현재 검증 완료로 표시하지 않습니다.
 
 Radio failure test가 꺼져 있으면 loss/latency/range 설정은 무시되어 무손실·무지연입니다. 켜면 loss, latency, jitter, range를 적용합니다. GPS/BME/SPS/SD failure는 환경 true value를 바꾸지 않고 telemetry의 해당 값/flag만 바꿉니다.
 

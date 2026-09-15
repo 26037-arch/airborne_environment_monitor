@@ -114,6 +114,23 @@ class ScenarioTests(unittest.TestCase):
         self.assertGreater(sample.pressure_Pa, 0.0)
         self.assertEqual(sample.mode, AtmosphereMode.STANDARD_ATMOSPHERE.value)
 
+    def test_sensor_and_sd_failures_do_not_stop_gnss_telemetry(self):
+        config = SimulationConfig(
+            atmosphere_mode=AtmosphereMode.STANDARD_ATMOSPHERE,
+            failures=FailureState(
+                bme280_failure=True, sps30_failure=True, sd_failure=True
+            ),
+        )
+        runtime = SimulationRuntime(config, self.data, self.root / "failure_isolation")
+        _drag, rows, _env = runtime.step(self.state())
+        runtime.close()
+        measurement = parse_csv_line(rows[0])
+        self.assertFalse(measurement.bme_ok)
+        self.assertFalse(measurement.sps_ok)
+        self.assertFalse(measurement.sd_ok)
+        self.assertTrue(measurement.gps_ok)
+        self.assertIsNotNone(measurement.latitude)
+
 
 if __name__ == "__main__":
     unittest.main()

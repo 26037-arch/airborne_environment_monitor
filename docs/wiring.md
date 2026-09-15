@@ -13,9 +13,9 @@
 | SPS30 | RX | TX1 / D18 | 교차 연결 |
 | SPS30 | SEL | 연결하지 않음 | 공식 UART/SHDLC 선택 방식 |
 | SPS30 | GND | GND | 공통 접지 |
-| GNSS | TX | RX2 / D17 | NMEA 수신 |
-| GNSS | RX | TX2 / D16 | 설정 명령이 필요할 때; 모듈 사양 확인 |
-| GNSS | GND | GND | 공통 접지 |
+| GNSS (direct mode) | TX | RX2 / D17 | 기존 TinyGPS++ NMEA 수신 |
+| Flight Controller (권장) | telemetry TX | RX2 / D17 | MAVLink 수신 |
+| Flight Controller (선택) | telemetry RX | TX2 / D16 | 현재 firmware는 command를 보내지 않음 |
 | XBee/adapter | TX | RX3 / D15 | 교차 연결 |
 | XBee/adapter | RX | TX3 / D14 | **5 V→3.3 V level 주의** |
 | XBee/adapter | GND | GND | 공통 접지 |
@@ -39,7 +39,7 @@
 ```text
 Serial  = USB debug
 Serial1 = SPS30 (D19 RX1, D18 TX1)
-Serial2 = GNSS  (D17 RX2, D16 TX2)
+Serial2 = GNSS 또는 Flight Controller MAVLink (compile-time 선택)
 Serial3 = XBee  (D15 RX3, D14 TX3)
 I2C     = BME280 (D20/D21)
 SPI     = microSD (D50/D51/D52 + configured CS)
@@ -47,3 +47,4 @@ SPI     = microSD (D50/D51/D52 + configured CS)
 
 SoftwareSerial은 사용하지 않습니다.
 
+GNSS를 Flight Controller에 연결하는 권장 구성에서는 GNSS를 Mega Serial2에 동시에 연결하지 않는다. 설정과 MAVLink dependency는 [flight_controller.md](flight_controller.md)를 참고한다.

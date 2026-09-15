@@ -109,5 +109,68 @@ bool formatCsvRow(const Measurement& m, char* output, size_t outputSize) {
   return true;
 }
 
-void sendTelemetryRow(const char* row) { Serial3.println(row); }
+bool formatCsvRowV2(const Measurement& m, const FlightStatus& flight,
+                    char* output, size_t outputSize) {
+  if (!formatCsvRow(m, output, outputSize)) {
+    return false;
+  }
+  size_t used = strlen(output);
 
+#define APPEND_V2_OR_FAIL(expression) \
+  do {                                 \
+    if (!(expression)) return false;   \
+  } while (0)
+#define V2_COMMA() APPEND_V2_OR_FAIL(appendComma(output, outputSize, used))
+
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used,
+                                flight.estimatedAltitudeM, 2,
+                                flight.connected && flight.positionValid));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used,
+                                flight.verticalSpeedMps, 2,
+                                flight.connected && flight.motionValid));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used, flight.rollDeg, 2,
+                                flight.connected && flight.attitudeValid));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used, flight.pitchDeg, 2,
+                                flight.connected && flight.attitudeValid));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used, flight.yawDeg, 2,
+                                flight.connected && flight.attitudeValid));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used,
+                                flight.batteryVoltage, 2,
+                                flight.connected && flight.batteryValid));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(appendFloat(output, outputSize, used,
+                                flight.batteryCurrent, 2,
+                                flight.connected && flight.batteryValid));
+  V2_COMMA();
+  if (flight.connected) {
+    APPEND_V2_OR_FAIL(
+        appendUnsigned(output, outputSize, used, flight.flightMode));
+  } else {
+    APPEND_V2_OR_FAIL(appendText(output, outputSize, used, "NA"));
+  }
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(
+      appendText(output, outputSize, used, flight.armed ? "1" : "0"));
+  V2_COMMA();
+  APPEND_V2_OR_FAIL(
+      appendText(output, outputSize, used, flight.connected ? "1" : "0"));
+  V2_COMMA();
+  if (flight.connected && flight.systemHealthValid) {
+    APPEND_V2_OR_FAIL(
+        appendUnsigned(output, outputSize, used, flight.systemHealth));
+  } else {
+    APPEND_V2_OR_FAIL(appendText(output, outputSize, used, "NA"));
+  }
+
+#undef V2_COMMA
+#undef APPEND_V2_OR_FAIL
+  return true;
+}
+
+void sendTelemetryRow(const char* row) { Serial3.println(row); }

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from shared.data_types import SensorReadings
-from shared.telemetry_schema import CSV_HEADER, parse_csv_line
+from shared.telemetry_schema import CSV_HEADER, CSV_HEADER_V2, parse_csv_line
 from simulator.environment.wind_model import WindConfig, WindMode, WindModel
 from simulator.telemetry.encoder import TelemetryEncoder
 from simulator.telemetry.virtual_radio import VirtualRadio, VirtualRadioConfig
@@ -29,6 +29,11 @@ class WindRadioTelemetryTests(unittest.TestCase):
         macro = text.split("#define CSV_HEADER_TEXT", 1)[1].split("\n\n", 1)[0]
         arduino_header = "".join(re.findall(r'"([^"]*)"', macro))
         self.assertEqual(tuple(arduino_header.split(",")), CSV_HEADER)
+        v2_macro = text.split("#define CSV_HEADER_V2_TEXT", 1)[1].split("\n\n", 1)[0]
+        v2_suffix = "".join(re.findall(r'"([^"]*)"', v2_macro)).lstrip(",")
+        self.assertEqual(
+            CSV_HEADER + tuple(v2_suffix.split(",")), CSV_HEADER_V2
+        )
         sensor = SensorReadings(20.0, 50.0, 1000.0, 1.0, 2.0, 3.0, 4.0,
                                 37.5, 127.0, 100.0, 2.0, 90.0, True, True, True, True)
         parsed = parse_csv_line(TelemetryEncoder().encode(7, 1000, sensor))
