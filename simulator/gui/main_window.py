@@ -192,13 +192,23 @@ class MainWindow(QMainWindow):
             f"connected={flight['connected']} armed={flight['armed']} "
             f"mode={flight['flight_mode']} battery={flight['battery_voltage_v']} V"
         )
+        ardupilot = data.get("ardupilot", {})
+        physics_text = (
+            f"{'CONNECTED' if ardupilot.get('physics_connected') else 'DISCONNECTED'} "
+            f"packets={ardupilot.get('physics_packet_count', 0)}/"
+            f"{ardupilot.get('actuator_packet_count', 0)} "
+            f"timeouts={ardupilot.get('timeout_count', 0)}"
+        )
+        actuator_values = ardupilot.get("last_actuator", {}).get("normalized", [])
         self.vector_label.setText(
             f"→ TRUE WIND [cyan]: {true['wind_enu_mps']}\n"
             f"→ PAYLOAD GROUND VELOCITY [yellow]: {ground}\n"
             f"→ RELATIVE AIR VELOCITY [magenta]: {true['relative_air_velocity_enu_mps']}\n"
             f"RADIO delivered/dropped/pending: {radio.get('delivered', 0)}/"
             f"{radio.get('dropped', 0)}/{radio.get('pending', 0)}\n"
-            f"FLIGHT CONTROLLER: {flight_text}"
+            f"FLIGHT CONTROLLER: {flight_text}\n"
+            f"ARDUPILOT PHYSICS: {physics_text}\n"
+            f"SIMULATED ACTUATOR: {actuator_values}"
         )
         mapping = {"Altitude": (true["altitude_m"], "Altitude (m)"), "Temperature": (true["temperature_C"], "Temperature (°C)"), "Pressure": (true["pressure_hPa"], "Pressure (hPa)"), "Humidity": (true["humidity_pct"], "RH (%)"), "PM2.5": (true["pm25_ugm3"], "PM2.5 (µg/m³)"), "PM10": (true["pm10_ugm3"], "PM10 (µg/m³)")}
         self.graph_time = float(data.get("time_s", self.graph_time + 0.5))

@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 
 from shared.data_types import EnvironmentSample, PayloadState, SensorReadings
+from shared.flight_status import FlightStatus
+from .flight.actuators import ActuatorCommand, ActuatorWrench
 from shared.telemetry_schema import CSV_HEADER_V1, parse_csv_line
 
 
@@ -27,18 +29,25 @@ class RunLogger:
         self.truth_path = self.directory / "truth.csv"
         self.telemetry_file = self.telemetry_path.open("w", encoding="utf-8", newline="")
         self.truth_file = self.truth_path.open("w", encoding="utf-8", newline="")
+        self.estimate_file = (self.directory / "ardupilot_estimate.csv").open("w", encoding="utf-8", newline="")
+        self.actuator_file = (self.directory / "actuator.csv").open("w", encoding="utf-8", newline="")
         self.telemetry_header: tuple[str, ...] = CSV_HEADER_V1
         self.telemetry_has_rows = False
         csv.writer(self.telemetry_file, lineterminator="\n").writerow(CSV_HEADER_V1)
         self.truth_writer = csv.writer(self.truth_file, lineterminator="\n")
         self.truth_writer.writerow(TRUTH_HEADER)
+        self.estimate_writer = csv.writer(self.estimate_file, lineterminator="\n")
+        self.estimate_writer.writerow(("time_ms", "connected", "roll_deg", "pitch_deg", "yaw_deg", "altitude_m", "ground_speed_mps", "vertical_speed_mps"))
+        self.actuator_writer = csv.writer(self.actuator_file, lineterminator="\n")
+        self.actuator_writer.writerow(("time_ms", "valid", "raw_pwm", "normalized", "motor_force_n", "force_body_flu_n", "torque_body_flu_nm"))
 
     @staticmethod
     def _value(value):
         return "NA" if value is None else value
 
     def write(self, row: str, state: PayloadState, environment: EnvironmentSample,
-              relative_air: tuple[float, float, float]) -> None:
+              relative_air: tuple[float, float, float],
+              flight: FlightStatus | None = None) -> None:
         measurement = parse_csv_line(row)
         if not self.telemetry_has_rows and self.telemetry_header != measurement.fieldnames:
             self.telemetry_header = measurement.fieldnames
@@ -60,8 +69,28 @@ class RunLogger:
             self._value(environment.pm10_ugm3), environment.wind_east_mps,
             environment.wind_north_mps, environment.wind_vertical_mps, *relative_air,
         ))
+        self.estimate_writer.writerow((
+            round(state.time_s * 1000), bool(flight and flight.connected),
+            self._value(None if flight is None else flight.roll_deg),
+            self._value(None if flight is None else flight.pitch_deg),
+            self._value(None if flight is None else flight.yaw_deg),
+            self._value(None if flight is None else flight.estimated_altitude_m),
+            self._value(None if flight is None else flight.ground_speed_mps),
+            self._value(None if flight is None else flight.vertical_speed_mps),
+        ))
         self.telemetry_file.flush()
         self.truth_file.flush()
+        self.estimate_file.flush()
+
+    def write_actuator(self, time_s: float, actuator: ActuatorCommand,
+                       wrench: ActuatorWrench) -> None:
+        self.actuator_writer.writerow((
+            round(time_s * 1000), actuator.valid,
+            json.dumps(actuator.raw_pwm), json.dumps(actuator.channels),
+            json.dumps(wrench.motor_forces_n), json.dumps(wrench.force_body_flu_n),
+            json.dumps(wrench.torque_body_flu_nm),
+        ))
+        self.actuator_file.flush()
 
     def write_provenance(self, provenance: dict[str, object]) -> None:
         (self.directory / "provenance.json").write_text(
@@ -71,6 +100,8 @@ class RunLogger:
     def close(self) -> None:
         self.telemetry_file.close()
         self.truth_file.close()
+        self.estimate_file.close()
+        self.actuator_file.close()
 
 
 def create_error_report(run_directory: Path) -> dict[str, object]:

@@ -13,6 +13,40 @@ from .telemetry.virtual_radio import VirtualRadioConfig
 
 
 @dataclass
+class FlightPhysicsConfig:
+    mode: str = "OFF"
+    host: str = "127.0.0.1"
+    port: int = 9002
+    lockstep: bool = True
+    timeout_ms: int = 1000
+    pwm_min: int = 1000
+    pwm_max: int = 2000
+    lifecycle: str = "EXTERNAL"
+    binary: str | None = None
+    working_directory: str | None = None
+    arguments: list[str] = field(default_factory=list)
+
+
+@dataclass
+class VehicleConfig:
+    type: str = "DISABLED"
+    mass_kg: float | None = None
+    inertia: list[float] | None = None
+    motor_count: int | None = None
+    motor_positions_m: list[list[float]] | None = None
+    motor_directions: list[int] | None = None
+    max_thrust_per_motor_n: float | None = None
+    torque_coefficient: float | None = None
+    profile_label: str = "NOT CONFIGURED"
+
+
+@dataclass
+class FlightControllerConfig:
+    telemetry: FlightTelemetryConfig = field(default_factory=FlightTelemetryConfig)
+    physics_engine: FlightPhysicsConfig = field(default_factory=FlightPhysicsConfig)
+
+
+@dataclass
 class SimulationConfig:
     latitude: float = 37.5
     longitude: float = 127.0
@@ -34,7 +68,8 @@ class SimulationConfig:
     wind: WindConfig = field(default_factory=WindConfig)
     failures: FailureState = field(default_factory=FailureState)
     radio: VirtualRadioConfig = field(default_factory=VirtualRadioConfig)
-    flight_controller: FlightTelemetryConfig = field(default_factory=FlightTelemetryConfig)
+    flight_controller: FlightControllerConfig = field(default_factory=FlightControllerConfig)
+    vehicle: VehicleConfig = field(default_factory=VehicleConfig)
     custom_environment: dict[str, float] = field(default_factory=dict)
 
 
@@ -48,30 +83,40 @@ def load_config(path: Path) -> SimulationConfig:
     failure_raw = raw.pop("failures", {})
     radio_raw = raw.pop("radio", {})
     flight_raw = dict(raw.pop("flight_controller", {}))
-    flight_raw["mode"] = FlightControllerMode(
-        flight_raw.get("mode", FlightControllerMode.OFF.value)
-    )
+    if "telemetry" not in flight_raw and "physics_engine" not in flight_raw:
+        telemetry_raw = {key: flight_raw[key] for key in
+                         ("mode", "endpoint", "baud_rate", "timeout_ms") if key in flight_raw}
+        physics_raw = {}
+    else:
+        telemetry_raw = dict(flight_raw.get("telemetry", {}))
+        physics_raw = dict(flight_raw.get("physics_engine", {}))
+    telemetry_raw["mode"] = FlightControllerMode(
+        telemetry_raw.get("mode", FlightControllerMode.OFF.value))
+    vehicle_raw = dict(raw.pop("vehicle", {}))
     raw["atmosphere_mode"] = AtmosphereMode(
-        raw.get("atmosphere_mode", AtmosphereMode.EARTH_CLIMATOLOGY.value)
-    )
+        raw.get("atmosphere_mode", AtmosphereMode.EARTH_CLIMATOLOGY.value))
     config = SimulationConfig(
-        **raw,
-        wind=WindConfig(**wind_raw),
-        noise=NoiseConfig(**noise_raw),
-        failures=FailureState(**failure_raw),
-        radio=VirtualRadioConfig(**radio_raw),
-        flight_controller=FlightTelemetryConfig(**flight_raw),
+        **raw, wind=WindConfig(**wind_raw), noise=NoiseConfig(**noise_raw),
+        failures=FailureState(**failure_raw), radio=VirtualRadioConfig(**radio_raw),
+        flight_controller=FlightControllerConfig(
+            FlightTelemetryConfig(**telemetry_raw), FlightPhysicsConfig(**physics_raw)),
+        vehicle=VehicleConfig(**vehicle_raw),
     )
     if config.payload_mass_kg <= 0 or config.reference_area_m2 < 0:
-        raise ValueError("payload mass는 양수, reference area는 0 이상이어야 합니다")
+        raise ValueError("payload mass must be positive and reference area non-negative")
     if config.telemetry_interval_s <= 0:
-        raise ValueError("telemetry interval은 양수여야 합니다")
+        raise ValueError("telemetry interval must be positive")
     if config.telemetry_schema_version not in {1, 2, 3}:
         raise ValueError("telemetry_schema_version must be 1, 2, or 3")
-    if config.sea_level_pressure_hpa <= 0:
-        raise ValueError("sea_level_pressure_hpa must be positive")
-    if not 0 <= config.simulation_epoch_unix <= 0xFFFFFFFF:
-        raise ValueError("simulation_epoch_unix must fit uint32")
-    if config.flight_controller.timeout_ms <= 0:
-        raise ValueError("flight controller timeout은 양수여야 합니다")
+    if config.sea_level_pressure_hpa <= 0 or not 0 <= config.simulation_epoch_unix <= 0xFFFFFFFF:
+        raise ValueError("invalid pressure or simulation epoch")
+    if config.flight_controller.telemetry.timeout_ms <= 0:
+        raise ValueError("flight telemetry timeout must be positive")
+    physics = config.flight_controller.physics_engine
+    if physics.mode not in {"OFF", "ARDUPILOT_SITL_JSON"}:
+        raise ValueError("physics_engine.mode must be OFF or ARDUPILOT_SITL_JSON")
+    if not 1 <= physics.port <= 65535 or physics.timeout_ms <= 0 or physics.pwm_max <= physics.pwm_min:
+        raise ValueError("invalid ArduPilot JSON transport configuration")
+    if physics.lifecycle not in {"EXTERNAL", "MANAGED"}:
+        raise ValueError("physics_engine.lifecycle must be EXTERNAL or MANAGED")
     return config

@@ -10,6 +10,9 @@ from shared.flight_status import FlightStatus
 from .configuration import SimulationConfig
 from .environment.earth_environment import EarthEnvironment
 from .flight.telemetry_source import FlightTelemetrySource, create_flight_source
+from .flight.ardupilot_json import (ArduPilotSitlEngine, FlightPhysicsEngine,
+                                    NullFlightPhysicsEngine, PhysicsInput)
+from .flight.actuators import ActuatorCommand, ActuatorWrench, create_actuator_model
 from .run_logging import RunLogger, create_error_report
 from .sensors.sensor_suite import SensorSuite
 from .telemetry.encoder import TelemetryEncoder
@@ -21,7 +24,8 @@ class SimulationRuntime:
 
     def __init__(self, config: SimulationConfig, data_root: Path,
                  run_directory: Path,
-                 flight_source: FlightTelemetrySource | None = None) -> None:
+                 flight_source: FlightTelemetrySource | None = None,
+                 physics_engine: FlightPhysicsEngine | None = None) -> None:
         self.config = config
         from .environment.wind_model import WindModel
         self.environment = EarthEnvironment(data_root, WindModel(config.wind), config.custom_environment)
@@ -31,7 +35,22 @@ class SimulationRuntime:
         )
         self.encoder = TelemetryEncoder(config.telemetry_schema_version)
         self.radio = VirtualRadio(config.radio)
-        self.flight_source = flight_source or create_flight_source(config.flight_controller)
+        self.flight_source = flight_source or create_flight_source(config.flight_controller.telemetry)
+        physics_config = config.flight_controller.physics_engine
+        self.physics_engine = physics_engine or (
+            ArduPilotSitlEngine(
+                physics_config.host, physics_config.port, physics_config.timeout_ms,
+                physics_config.lockstep, physics_config.pwm_min, physics_config.pwm_max,
+            ) if physics_config.mode == "ARDUPILOT_SITL_JSON" else NullFlightPhysicsEngine()
+        )
+        if (physics_engine is None and physics_config.mode == "ARDUPILOT_SITL_JSON" and
+                physics_config.lifecycle == "MANAGED"):
+            self.physics_engine.start_process(
+                physics_config.binary, physics_config.arguments,
+                physics_config.working_directory)
+        self.actuator_model = create_actuator_model(config.vehicle)
+        self.last_actuator = ActuatorCommand((), 0.0, False)
+        self.last_wrench = ActuatorWrench()
         self.flight_status: FlightStatus | None = None
         self.logger = RunLogger(run_directory)
         self.run_directory = Path(run_directory)
@@ -53,6 +72,17 @@ class SimulationRuntime:
         # WorldInfo.coordinateSystem="ENU": x=east, y=north, z=up.
         drag_webots = drag_enu
 
+        if self.config.flight_controller.physics_engine.mode == "ARDUPILOT_SITL_JSON":
+            try:
+                self.last_actuator = self.physics_engine.step(PhysicsInput.from_webots(state, env))
+                self.last_wrench = self.actuator_model.calculate(self.last_actuator)
+            except (ValueError, OSError) as exc:
+                self.last_actuator = ActuatorCommand((), state.time_s, False)
+                self.last_wrench = ActuatorWrench()
+                self.physics_engine.status.physics_connected = False
+                self.physics_engine.status.last_error = str(exc)
+        self.logger.write_actuator(state.time_s, self.last_actuator, self.last_wrench)
+
         if state.time_s + 1e-9 >= self.next_telemetry_s:
             self.sequence += 1
             sensor = self.sensors.read(
@@ -62,9 +92,20 @@ class SimulationRuntime:
             row = self.encoder.encode(
                 self.sequence, round(state.time_s * 1000), sensor, self.flight_status
             )
-            self.logger.write(row, state, env, relative)
+            self.logger.write(row, state, env, relative, self.flight_status)
             if not self.provenance_written:
-                self.logger.write_provenance(env.provenance)
+                self.logger.write_provenance({
+                    **env.provenance,
+                    "ardupilot_interface": {
+                        "repository": "https://github.com/ArduPilot/ardupilot",
+                        "verified_master_commit_2026-09-15": "bf080274049960688db099cd6798b6632184c080",
+                        "backend": "libraries/SITL/SIM_JSON.*",
+                        "json_listen_port": self.config.flight_controller.physics_engine.port,
+                        "mavlink_endpoint": self.config.flight_controller.telemetry.endpoint,
+                        "lockstep": self.config.flight_controller.physics_engine.lockstep,
+                        "vehicle_profile": self.config.vehicle.profile_label,
+                    },
+                })
                 self.provenance_written = True
             distance = math.sqrt(sum(value * value for value in state.position_m))
             self.radio.send(row, state.time_s, distance)
@@ -85,6 +126,18 @@ class SimulationRuntime:
             },
             "sensor": sensor.__dict__,
             "flight": None if self.flight_status is None else self.flight_status.__dict__,
+            "ardupilot": {
+                **self.physics_engine.status.to_dict(),
+                "mavlink_connected": bool(self.flight_status and self.flight_status.connected),
+                "last_input": {"timestamp_s": self.physics_engine.status.last_physics_timestamp_s},
+                "last_actuator": {
+                    "raw": self.last_actuator.raw_pwm,
+                    "normalized": self.last_actuator.channels,
+                    "valid": self.last_actuator.valid,
+                    "force_body_flu_n": self.last_wrench.force_body_flu_n,
+                    "torque_body_flu_nm": self.last_wrench.torque_body_flu_nm,
+                },
+            },
             "radio": self.radio.status,
         }
         (self.run_directory / "status.json").write_text(
@@ -93,5 +146,6 @@ class SimulationRuntime:
 
     def close(self) -> dict[str, object]:
         self.flight_source.close()
+        self.physics_engine.close()
         self.logger.close()
         return create_error_report(self.run_directory)

@@ -1,5 +1,39 @@
 # Architecture
 
+## SITL closed loop
+
+```text
+EarthEnvironment -> wind/air --------------------------+
+                                                        v
+Webots ENU rigid-body truth -> ENU/NED+FLU/FRD adapter -> ArduPilot SITL JSON
+       ^                                                   |
+       |                                                   | binary PWM
+       +---- body force/torque <- virtual actuator model <-+
+
+Webots truth -> Payload SensorSuite -> telemetry v3 -> Ground Station
+ArduPilot estimate -----------------> MAVLink source -> status/logging
+```
+
+`FlightPhysicsEngine` is independent from the existing read-only
+`FlightTelemetrySource`. `ArduPilotSitlEngine` listens on UDP 9002 for the
+official 16/32-channel binary servo packet and replies to its sender with JSON.
+The timestamp is monotonic Webots simulation time; position, velocity and wind
+are NED. Quaternion is scalar-first body-FRD to NED. Gyro is body FRD.
+`accel_body` is specific force: world kinematic acceleration minus gravity,
+rotated into FRD; therefore a stationary level vehicle reads `(0,0,-g)` and a
+freely falling one reads zero.
+
+The official schema's mandatory state is timestamp + gyro(3) + accel(3) +
+velocity(3) + quaternion(4); position(3) is sent for local position support and
+wind(3) is optional, for 20 total scalar values (19 excluding timestamp).
+The current source marks `position` optional although the accompanying example
+README lists it among required fields; this adapter always sends it, satisfying
+both interpretations.
+
+On timeout, malformed data, non-finite state, quaternion failure, SITL exit, or
+Webots time reset, the command is invalidated and the virtual wrench becomes
+zero. Network code does not know about serial or hardware actuators.
+
 ## Responsibility boundary
 
 | component | responsibility |

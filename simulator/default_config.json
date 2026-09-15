@@ -54,10 +54,36 @@
     "random_seed": 12345
   },
   "flight_controller": {
-    "mode": "OFF",
-    "endpoint": "udp:127.0.0.1:14550",
-    "baud_rate": 115200,
-    "timeout_ms": 3000
+    "telemetry": {
+      "mode": "OFF",
+      "endpoint": "udp:127.0.0.1:14550",
+      "baud_rate": 115200,
+      "timeout_ms": 3000
+    },
+    "physics_engine": {
+      "mode": "OFF",
+      "host": "127.0.0.1",
+      "port": 9002,
+      "lockstep": true,
+      "timeout_ms": 1000,
+      "pwm_min": 1000,
+      "pwm_max": 2000,
+      "lifecycle": "EXTERNAL",
+      "binary": null,
+      "working_directory": null,
+      "arguments": []
+    }
+  },
+  "vehicle": {
+    "type": "DISABLED",
+    "mass_kg": null,
+    "inertia": null,
+    "motor_count": null,
+    "motor_positions_m": null,
+    "motor_directions": null,
+    "max_thrust_per_motor_n": null,
+    "torque_coefficient": null,
+    "profile_label": "NOT CONFIGURED"
   },
   "custom_environment": {}
 }

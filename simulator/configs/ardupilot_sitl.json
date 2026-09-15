@@ -1,0 +1,37 @@
+{
+  "latitude": 37.5,
+  "longitude": 127.0,
+  "month": 9,
+  "atmosphere_mode": "STANDARD ATMOSPHERE",
+  "initial_altitude_m": 10.0,
+  "initial_velocity_east_mps": 0.0,
+  "initial_velocity_north_mps": 0.0,
+  "initial_velocity_vertical_mps": 0.0,
+  "payload_mass_kg": 1.0,
+  "drag_coefficient": 0.8,
+  "reference_area_m2": 0.03,
+  "telemetry_interval_s": 1.0,
+  "telemetry_schema_version": 3,
+  "sea_level_pressure_hpa": 1013.25,
+  "simulation_epoch_unix": 1767225600,
+  "noise": {"mode": "IDEAL", "enabled": false, "strength": 1.0, "random_seed": 12345},
+  "wind": {"mode": "CALM", "speed_mps": 0.0, "direction_to_deg": 0.0, "vertical_mps": 0.0, "layers": [], "mean_speed_mps": 0.0, "mean_direction_to_deg": 0.0, "gust_amplitude_mps": 0.0, "gust_frequency_hz": 0.1, "turbulence_std_mps": 0.0, "random_seed": 12345, "physics_rate_hz": 50.0},
+  "failures": {},
+  "radio": {},
+  "flight_controller": {
+    "telemetry": {"mode": "MAVLINK", "endpoint": "udp:127.0.0.1:14550", "baud_rate": 115200, "timeout_ms": 3000},
+    "physics_engine": {"mode": "ARDUPILOT_SITL_JSON", "host": "127.0.0.1", "port": 9002, "lockstep": true, "timeout_ms": 1000, "pwm_min": 1000, "pwm_max": 2000, "lifecycle": "EXTERNAL", "binary": null, "working_directory": null, "arguments": []}
+  },
+  "vehicle": {
+    "type": "MULTIROTOR_SIMULATION",
+    "mass_kg": 1.0,
+    "inertia": null,
+    "motor_count": 4,
+    "motor_positions_m": [[0.2, -0.2, 0.0], [-0.2, 0.2, 0.0], [0.2, 0.2, 0.0], [-0.2, -0.2, 0.0]],
+    "motor_directions": [1, 1, -1, -1],
+    "max_thrust_per_motor_n": 5.0,
+    "torque_coefficient": 0.02,
+    "profile_label": "DEMO ONLY - NOT HARDWARE CALIBRATED"
+  },
+  "custom_environment": {}
+}

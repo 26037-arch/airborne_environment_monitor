@@ -98,6 +98,10 @@ def main() -> None:
             previous_state_time = now
             drag_force, transmitted_rows, environment = runtime.step(state)
             payload.addForce(list(drag_force), False)
+            # ArduPilot outputs drive virtual Webots physics only. Never forward
+            # these values to serial, PWM, ESC, servo, or physical arming paths.
+            payload.addForce(list(runtime.last_wrench.force_body_flu_n), True)
+            payload.addTorque(list(runtime.last_wrench.torque_body_flu_nm), True)
             relative_air = tuple(velocity[i] - environment.wind_vector[i] for i in range(3))
             update_arrow(wind_arrow, position, environment.wind_vector)
             update_arrow(ground_arrow, position, state.velocity_ground_mps)

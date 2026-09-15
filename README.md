@@ -1,5 +1,24 @@
 # Airborne Environment Monitor
 
+## ArduPilot closed-loop simulator
+
+The simulator does not reimplement a flight controller. It executes ArduPilot
+SITL as the actual flight-control calculation engine. Webots provides rigid-body
+physics and environmental forces. Webots state is sent to ArduPilot through its
+SITL JSON physics interface, and ArduPilot actuator outputs are applied only to
+virtual Webots actuators. No SITL actuator output is forwarded to physical
+motors, ESCs or servos.
+
+시뮬레이터는 비행제어 알고리즘을 Python으로 다시 구현하지 않습니다. 공식
+ArduPilot SITL이 EKF·항법·제어·mixer를 실행하고, Webots가 ENU 강체 물리와
+환경력을 계산합니다. SITL PWM 출력은 Webots 내부의 가상 actuator에만 적용되며
+Arduino, HC-12, 실제 모터·ESC·servo·arming 경로에는 연결되지 않습니다.
+
+기본 설정은 계속 `physics_engine.mode = OFF`이므로 ArduPilot이 없어도 기존
+payload-only simulation이 동작합니다. opt-in 예제와 점검 명령은
+[`simulator/README.md`](simulator/README.md)에 있습니다.
+상세한 SITL/WSL 실행법과 안전 경계는 [`docs/ardupilot_sitl.md`](docs/ardupilot_sitl.md)에 있습니다.
+
 Arduino Mega 2560이 AHT20, BMP280, MPU6050, NEO-M8N, RTC를 읽어 같은 schema v3 CSV snapshot을 microSD에 우선 기록하고 HC-12로 전송합니다. 지상의 Arduino Uno는 HC-12 수신 바이트를 USB Serial로 그대로 넘기며, PC가 검증·로깅·그래프·packet loss 분석을 담당합니다.
 
 이 프로젝트는 환경 측정 payload입니다. motor PWM, ESC/servo command, arming, 자동 이륙, 자세 안정화 또는 자율비행을 구현하지 않습니다. 기존 PX4/ArduPilot adapter 파일은 future/optional interface로 보존되지만 기본 Mega runtime과 simulator config에서는 사용하지 않습니다.
